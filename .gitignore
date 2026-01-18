@@ -1,0 +1,10 @@
+# binaries
+*.exe
+
+# Go build artifacts
+/bin/
+/dist/
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,65 @@
+listeners:
+  - id: MVPS1
+    listen: ":502"
+    protocols:
+      modbus: true
+      raw_ingest: true
+    discard_unknown: true
+
+  - id: MVPS2
+    listen: ":503"
+    protocols:
+      modbus: false
+      raw_ingest: true
+    discard_unknown: true
+
+modbus:
+  enabled: true
+  limits:
+    max_pdu_bytes: 260
+    max_registers_per_request: 125
+  timeouts:
+    read_timeout_ms: 2000
+    write_timeout_ms: 2000
+
+raw_ingest:
+  enabled: true
+  limits:
+    max_packet_bytes: 4096
+  timeouts:
+    read_timeout_ms: 2000
+
+memory:
+  memories:
+    "MVPS1":
+      port: 502
+      unit_id: 1
+      coils:
+        start: 0
+        count: 64
+      discrete_inputs:
+        start: 0
+        count: 64
+      holding_registers:
+        start: 0
+        count: 200
+      input_registers:
+        start: 0
+        count: 100
+
+    "503:2":
+      port: 503
+      unit_id: 2
+      coils:
+        start: 0
+        count: 32
+      holding_registers:
+        start: 0
+        count: 100
+
+    "504:1":
+      port: 504
+      unit_id: 1
+      holding_registers:
+        start: 0
+        count: 300
