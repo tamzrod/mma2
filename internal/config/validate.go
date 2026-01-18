@@ -45,12 +45,8 @@ func validateIngress(gates []IngressGate) error {
 			return fmt.Errorf("listeners[%d]: listen is required", i)
 		}
 
-		if !g.Protocols.Modbus && !g.Protocols.RawIngest {
-			return fmt.Errorf(
-				"listeners[%d]: at least one protocol must be enabled (modbus or raw_ingest)",
-				i,
-			)
-		}
+		// Modbus is implicit and always enabled.
+		// Raw ingest is optional and validated elsewhere if configured.
 	}
 
 	return nil

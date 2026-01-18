@@ -45,7 +45,7 @@ func (l *Listener) handleConn(
 	onModbus func(net.Conn),
 	onRawIngest func(net.Conn),
 ) {
-	proto, _, err := Classify(conn)
+	proto, err := Classify(conn)
 	if err != nil {
 		conn.Close()
 		return
@@ -53,10 +53,10 @@ func (l *Listener) handleConn(
 
 	switch proto {
 	case ProtocolModbus:
-		if l.cfg.Protocols.Modbus {
-			onModbus(conn)
-			return
-		}
+		// Modbus is implicit and always enabled
+		onModbus(conn)
+		return
+
 	case ProtocolRawIngest:
 		if l.cfg.Protocols.RawIngest {
 			onRawIngest(conn)

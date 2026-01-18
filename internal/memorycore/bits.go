@@ -10,20 +10,22 @@ func bytesForBits(n uint16) int {
 	return int((n + 7) / 8)
 }
 
-// copyBits copies packed bit data from src into dst.
-// start is the starting bit offset in dst.
+// copyBits copies packed bit data from src into dst (LSB-first).
+// srcStart is the starting bit offset in src.
 // count is the number of bits to copy.
-func copyBits(dst []byte, src []byte, start uint16, count uint16) {
+// Destination always starts at bit 0.
+func copyBits(dst []byte, src []byte, srcStart uint16, count uint16) {
 	for i := uint16(0); i < count; i++ {
-		dstBit := start + i
+		srcBit := srcStart + i
+		dstBit := i
+
+		srcByte := srcBit / 8
+		srcMask := byte(1 << (srcBit % 8))
 
 		dstByte := dstBit / 8
 		dstMask := byte(1 << (dstBit % 8))
 
-		srcByte := i / 8
-		srcMask := byte(1 << (i % 8))
-
-		if int(dstByte) >= len(dst) || int(srcByte) >= len(src) {
+		if int(srcByte) >= len(src) || int(dstByte) >= len(dst) {
 			return
 		}
 
@@ -35,12 +37,13 @@ func copyBits(dst []byte, src []byte, start uint16, count uint16) {
 	}
 }
 
-// writeBits writes packed bits from src into dst.
-// start is the starting bit offset in dst.
+// writeBits writes packed bits from src into dst (LSB-first).
+// dstStart is the starting bit offset in dst.
 // count is the number of bits to write.
-func writeBits(dst []byte, start uint16, count uint16, src []byte) {
+// Source is interpreted starting at bit 0.
+func writeBits(dst []byte, dstStart uint16, count uint16, src []byte) {
 	for i := uint16(0); i < count; i++ {
-		dstBit := start + i
+		dstBit := dstStart + i
 
 		dstByte := dstBit / 8
 		dstMask := byte(1 << (dstBit % 8))

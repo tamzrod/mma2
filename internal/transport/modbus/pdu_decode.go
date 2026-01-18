@@ -30,7 +30,7 @@ func DecodeWriteSingle(pdu []byte) (*WriteSinglePDU, error) {
 	}, nil
 }
 
-// DecodeWriteMultiple decodes FC 15,16
+// DecodeWriteMultiple decodes FC 16 (write multiple registers)
 func DecodeWriteMultiple(pdu []byte) (*WriteMultiplePDU, error) {
 	if len(pdu) < 5 {
 		return nil, fmt.Errorf("invalid write multiple length")
@@ -44,6 +44,10 @@ func DecodeWriteMultiple(pdu []byte) (*WriteMultiplePDU, error) {
 		return nil, fmt.Errorf("byte count mismatch")
 	}
 
+	if byteCount%2 != 0 {
+		return nil, fmt.Errorf("invalid register byte count")
+	}
+
 	values := make([]uint16, 0, qty)
 	for i := 0; i < byteCount; i += 2 {
 		values = append(values, binary.BigEndian.Uint16(pdu[5+i:5+i+2]))
@@ -53,5 +57,39 @@ func DecodeWriteMultiple(pdu []byte) (*WriteMultiplePDU, error) {
 		Address:  addr,
 		Quantity: qty,
 		Values:   values,
+	}, nil
+}
+
+// DecodeWriteMultipleBits decodes FC 15 (write multiple coils)
+// Payload: Address(2) Quantity(2) ByteCount(1) Data(ByteCount)
+// Bits are packed LSB-first per Modbus spec.
+func DecodeWriteMultipleBits(pdu []byte) (*WriteMultipleBitsPDU, error) {
+	if len(pdu) < 5 {
+		return nil, fmt.Errorf("invalid write multiple bits length")
+	}
+
+	addr := binary.BigEndian.Uint16(pdu[0:2])
+	qty := binary.BigEndian.Uint16(pdu[2:4])
+	byteCount := int(pdu[4])
+
+	if len(pdu[5:]) != byteCount {
+		return nil, fmt.Errorf("byte count mismatch")
+	}
+
+	expected := 0
+	if qty != 0 {
+		expected = int((qty + 7) / 8)
+	}
+	if byteCount != expected {
+		return nil, fmt.Errorf("invalid coil byte count")
+	}
+
+	data := make([]byte, byteCount)
+	copy(data, pdu[5:])
+
+	return &WriteMultipleBitsPDU{
+		Address:  addr,
+		Quantity: qty,
+		Data:     data,
 	}, nil
 }

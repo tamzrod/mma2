@@ -13,9 +13,16 @@ type WriteSinglePDU struct {
 	Value   uint16
 }
 
-// WriteMultiplePDU represents FC 15,16
+// WriteMultiplePDU represents FC 16 (write multiple registers)
 type WriteMultiplePDU struct {
 	Address  uint16
 	Quantity uint16
 	Values   []uint16
+}
+
+// WriteMultipleBitsPDU represents FC 15 (write multiple coils)
+type WriteMultipleBitsPDU struct {
+	Address  uint16
+	Quantity uint16
+	Data     []byte
 }

@@ -8,6 +8,10 @@ import (
 )
 
 // BuildMemoryStore constructs a memorycore.Store from config.Memory.
+//
+// Architectural rule (LOCKED):
+//   Memory identity is ALWAYS (Port:uint16, UnitID:uint16).
+// YAML map keys are NEVER used as identity.
 func BuildMemoryStore(cfg *Config) (*memorycore.Store, error) {
 	store := memorycore.NewStore()
 
@@ -45,16 +49,24 @@ func BuildMemoryStore(cfg *Config) (*memorycore.Store, error) {
 
 		mem, err := memorycore.NewMemory(layouts)
 		if err != nil {
+			// key is for human/debug context only
 			return nil, fmt.Errorf("memory[%s]: create failed: %w", key, err)
 		}
 
+		// Identity is numeric and protocol-aligned.
 		id := memorycore.MemoryID{
-			Port:   key,           // STRING KEY IS THE ID
+			Port:   def.Port,
 			UnitID: def.UnitID,
 		}
 
 		if err := store.Add(id, mem); err != nil {
-			return nil, fmt.Errorf("memory[%s]: register failed: %w", key, err)
+			return nil, fmt.Errorf(
+				"memory[%s] (port=%d unit=%d): register failed: %w",
+				key,
+				id.Port,
+				id.UnitID,
+				err,
+			)
 		}
 	}
 

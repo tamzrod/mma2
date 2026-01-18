@@ -1,10 +1,7 @@
 // internal/ingress/classifier.go
 package ingress
 
-import (
-	"bufio"
-	"net"
-)
+import "net"
 
 // Protocol identifies the ingress protocol.
 type Protocol uint8
@@ -15,22 +12,14 @@ const (
 	ProtocolRawIngest
 )
 
-// Classify peeks at the connection stream and determines protocol.
-// It must not consume bytes permanently.
-func Classify(conn net.Conn) (Protocol, *bufio.Reader, error) {
-	reader := bufio.NewReader(conn)
-
-	// Peek minimal bytes safely
-	peek, err := reader.Peek(2)
-	if err != nil {
-		return ProtocolUnknown, reader, err
-	}
-
-	// Raw Ingest magic (example: 'R','I')
-	if peek[0] == 'R' && peek[1] == 'I' {
-		return ProtocolRawIngest, reader, nil
-	}
-
-	// Modbus TCP: first two bytes are Transaction ID (anything valid)
-	return ProtocolModbus, reader, nil
+// Classify determines the protocol for an incoming connection.
+//
+// IMPORTANT:
+// This function MUST NOT read from the connection stream.
+// Any pre-read will corrupt stream-based protocols like Modbus TCP.
+func Classify(conn net.Conn) (Protocol, error) {
+	// MMA2.0 is a Modbus Memory Appliance.
+	// Modbus TCP is implicit and always enabled.
+	// Raw ingest uses explicit routing and should not rely on peeking here.
+	return ProtocolModbus, nil
 }

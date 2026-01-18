@@ -1,13 +1,18 @@
 // internal/memorycore/memory_id.go
 package memorycore
 
+// MemoryID uniquely identifies a memory instance.
+// Architectural rule (LOCKED):
+//   MemoryID = (Port:uint16, UnitID:uint16)
 type MemoryID struct {
-	Port   string
+	Port   uint16
 	UnitID uint16
 }
 
 func (id MemoryID) Validate() error {
-	if id.Port == "" {
+	// Port and UnitID are protocol-derived.
+	// Zero is invalid for both.
+	if id.Port == 0 {
 		return ErrEmptyPort
 	}
 	if id.UnitID == 0 {

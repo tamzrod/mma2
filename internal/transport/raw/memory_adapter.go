@@ -1,3 +1,6 @@
+//go:build raw_ingest
+// +build raw_ingest
+
 // internal/transport/raw/memory_adapter.go
 package raw
 
