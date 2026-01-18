@@ -2,60 +2,119 @@
 package modbus
 
 import (
+	"encoding/binary"
+
 	"MMA2.0/internal/memorycore"
 )
 
 // DispatchMemory routes a Modbus request to memorycore.
 // Supported:
-//   FC3 - Read Holding Registers
-//   FC4 - Read Input Registers
-func DispatchMemory(store *memorycore.Store, portKey string, req *Request) []byte {
+//   FC3  - Read Holding Registers
+//   FC4  - Read Input Registers
+//   FC6  - Write Single Register (Holding Registers only)
+//   FC16 - Write Multiple Registers (Holding Registers only)
+func DispatchMemory(store *memorycore.Store, req *Request) []byte {
 	switch req.FunctionCode {
 	case 3:
-		return handleReadRegs(store, portKey, req, memorycore.AreaHoldingRegs)
+		return handleReadRegs(store, req, memorycore.AreaHoldingRegs)
 	case 4:
-		return handleReadRegs(store, portKey, req, memorycore.AreaInputRegs)
+		return handleReadRegs(store, req, memorycore.AreaInputRegs)
+	case 6:
+		return handleWriteSingleReg(store, req)
+	case 16:
+		return handleWriteMultipleRegs(store, req)
 	default:
 		// Illegal Function
-		return []byte{req.FunctionCode | 0x80, 0x01}
+		return BuildExceptionPDU(req.FunctionCode, 0x01)
 	}
 }
 
-func handleReadRegs(
-	store *memorycore.Store,
-	portKey string,
-	req *Request,
-	area memorycore.Area,
-) []byte {
-	if len(req.Payload) < 4 {
-		// Illegal Data Value
-		return []byte{req.FunctionCode | 0x80, 0x03}
-	}
-
-	address := uint16(req.Payload[0])<<8 | uint16(req.Payload[1])
-	count := uint16(req.Payload[2])<<8 | uint16(req.Payload[3])
-
+func resolveMemory(store *memorycore.Store, req *Request) (*memorycore.Memory, bool) {
 	memID := memorycore.MemoryID{
-		Port:   portKey,
+		Port:   req.Port,
 		UnitID: uint16(req.UnitID),
 	}
-
 	mem, err := store.MustGet(memID)
 	if err != nil {
-		// Illegal Data Address
-		return []byte{req.FunctionCode | 0x80, 0x02}
+		return nil, false
+	}
+	return mem, true
+}
+
+func handleReadRegs(store *memorycore.Store, req *Request, area memorycore.Area) []byte {
+	decoded, err := DecodeReadRequest(req.Payload)
+	if err != nil {
+		// Illegal Data Value
+		return BuildExceptionPDU(req.FunctionCode, 0x03)
 	}
 
-	buf := make([]byte, int(count)*2)
-	if err := mem.ReadRegs(area, address, count, buf); err != nil {
-		// Illegal Data Address
-		return []byte{req.FunctionCode | 0x80, 0x02}
+	mem, ok := resolveMemory(store, req)
+	if !ok {
+		// Illegal Data Address (unknown memory id)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
 	}
 
-	pdu := make([]byte, 2+len(buf))
-	pdu[0] = req.FunctionCode
-	pdu[1] = byte(len(buf))
-	copy(pdu[2:], buf)
+	buf := make([]byte, int(decoded.Quantity)*2)
+	if err := mem.ReadRegs(area, decoded.Address, decoded.Quantity, buf); err != nil {
+		// Illegal Data Address (includes out-of-bounds)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
+	}
 
-	return pdu
+	return BuildReadResponsePDU(req.FunctionCode, buf)
+}
+
+func handleWriteSingleReg(store *memorycore.Store, req *Request) []byte {
+	decoded, err := DecodeWriteSingle(req.Payload)
+	if err != nil {
+		// Illegal Data Value
+		return BuildExceptionPDU(req.FunctionCode, 0x03)
+	}
+
+	mem, ok := resolveMemory(store, req)
+	if !ok {
+		// Illegal Data Address (unknown memory id)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
+	}
+
+	src := make([]byte, 2)
+	binary.BigEndian.PutUint16(src, decoded.Value)
+
+	if err := mem.WriteRegs(memorycore.AreaHoldingRegs, decoded.Address, 1, src); err != nil {
+		// Illegal Data Address (includes out-of-bounds)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
+	}
+
+	return BuildWriteSingleResponsePDU(req.FunctionCode, decoded.Address, decoded.Value)
+}
+
+func handleWriteMultipleRegs(store *memorycore.Store, req *Request) []byte {
+	decoded, err := DecodeWriteMultiple(req.Payload)
+	if err != nil {
+		// Illegal Data Value
+		return BuildExceptionPDU(req.FunctionCode, 0x03)
+	}
+
+	// Defensive coherence check: quantity must match provided values.
+	if decoded.Quantity == 0 || int(decoded.Quantity) != len(decoded.Values) {
+		// Illegal Data Value
+		return BuildExceptionPDU(req.FunctionCode, 0x03)
+	}
+
+	mem, ok := resolveMemory(store, req)
+	if !ok {
+		// Illegal Data Address (unknown memory id)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
+	}
+
+	src := make([]byte, len(decoded.Values)*2)
+	for i, v := range decoded.Values {
+		binary.BigEndian.PutUint16(src[i*2:i*2+2], v)
+	}
+
+	if err := mem.WriteRegs(memorycore.AreaHoldingRegs, decoded.Address, decoded.Quantity, src); err != nil {
+		// Illegal Data Address (includes out-of-bounds)
+		return BuildExceptionPDU(req.FunctionCode, 0x02)
+	}
+
+	return BuildWriteMultipleResponsePDU(req.FunctionCode, decoded.Address, decoded.Quantity)
 }
