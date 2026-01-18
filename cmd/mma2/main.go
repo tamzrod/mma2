@@ -47,10 +47,9 @@ func main() {
 	// --------------------
 
 	for _, gate := range cfg.Ingress {
-		portKey := gate.ID
 
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConn(conn, store, portKey)
+			modbus.HandleConn(conn, store)
 		}
 
 		onRawIngest := func(conn net.Conn) {
