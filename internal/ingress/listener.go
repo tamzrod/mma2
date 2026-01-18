@@ -2,11 +2,22 @@
 package ingress
 
 import (
+	"bufio"
 	"log"
 	"net"
 
 	"MMA2.0/internal/config"
 )
+
+// bufferedConn ensures all reads flow through a bufio.Reader that already peeked.
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) {
+	return c.r.Read(p)
+}
 
 // Listener represents a TCP ingress gate.
 type Listener struct {
@@ -45,21 +56,24 @@ func (l *Listener) handleConn(
 	onModbus func(net.Conn),
 	onRawIngest func(net.Conn),
 ) {
-	proto, err := Classify(conn)
+	proto, reader, err := Classify(conn)
 	if err != nil {
 		conn.Close()
 		return
 	}
 
+	// Important: after Peek(), all subsequent reads must use reader.
+	bc := &bufferedConn{Conn: conn, r: reader}
+
 	switch proto {
 	case ProtocolModbus:
 		// Modbus is implicit and always enabled
-		onModbus(conn)
+		onModbus(bc)
 		return
 
 	case ProtocolRawIngest:
 		if l.cfg.Protocols.RawIngest {
-			onRawIngest(conn)
+			onRawIngest(bc)
 			return
 		}
 	}

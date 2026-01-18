@@ -1,6 +1,8 @@
 listeners:
   - id: modbus-502
     listen: ":502"
+    protocols:
+      raw_ingest: true
 
 memory:
   memories:

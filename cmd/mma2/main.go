@@ -9,6 +9,7 @@ import (
 	"MMA2.0/internal/config"
 	"MMA2.0/internal/ingress"
 	"MMA2.0/internal/transport/modbus"
+	"MMA2.0/internal/transport/rawingest"
 )
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 		}
 
 		onRawIngest := func(conn net.Conn) {
-			conn.Close()
+			rawingest.HandleConn(conn, store)
 		}
 
 		l := ingress.NewListener(gate)

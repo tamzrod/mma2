@@ -22,9 +22,7 @@ func HandleConn(conn net.Conn, store *memorycore.Store) {
 	port := uint16(localAddr.Port)
 
 	for {
-		// debug
-		log.Printf("modbus: waiting for request from %s", conn.RemoteAddr())
-		// debug ends
+
 
 		req, err := ReadRequest(conn, port)
 		if err != nil {
@@ -34,15 +32,7 @@ func HandleConn(conn net.Conn, store *memorycore.Store) {
 			return
 		}
 
-		// debug
-		log.Printf(
-			"modbus: request received port=%d unit=%d fc=%d payload_len=%d",
-			req.Port,
-			req.UnitID,
-			req.FunctionCode,
-			len(req.Payload),
-		)
-		// debug ends
+
 
 		pdu := DispatchMemory(store, req)
 		if pdu == nil {
