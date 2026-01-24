@@ -81,6 +81,10 @@ func validateMemory(mem MemoryConfig) error {
 		if err := validateArea(key, "input_registers", def.InputRegs); err != nil {
 			return err
 		}
+
+		if err := validatePolicy(key, def.Policy); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -98,6 +102,27 @@ func validateArea(memKey, name string, a Area) error {
 			"memory[%s].%s: start(%d)+count(%d) exceeds 16-bit address space",
 			memKey, name, a.Start, a.Count,
 		)
+	}
+
+	return nil
+}
+
+func validatePolicy(memKey string, p *MemoryPolicyConfig) error {
+	if p == nil {
+		// Missing policy is allowed. Authority will default deny when enforced.
+		return nil
+	}
+
+	for i, r := range p.Rules {
+		if r.ID == "" {
+			return fmt.Errorf("memory[%s].policy.rules[%d]: id is required", memKey, i)
+		}
+		if len(r.SourceIP) == 0 {
+			return fmt.Errorf("memory[%s].policy.rules[%d] (%s): source_ip must not be empty", memKey, i, r.ID)
+		}
+		if len(r.AllowFC) == 0 {
+			return fmt.Errorf("memory[%s].policy.rules[%d] (%s): allow_fc must not be empty", memKey, i, r.ID)
+		}
 	}
 
 	return nil

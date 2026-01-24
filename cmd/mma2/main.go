@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 
+	"MMA2.0/internal/authority"
 	"MMA2.0/internal/config"
 	"MMA2.0/internal/ingress"
 	"MMA2.0/internal/transport/modbus"
@@ -44,13 +45,30 @@ func main() {
 	}
 
 	// --------------------
+	// Build authority + policies
+	// --------------------
+
+	auth := authority.New()
+
+	policies, err := config.BuildAuthorityPolicies(cfg)
+	if err != nil {
+		log.Fatalf("policy build failed: %v", err)
+	}
+
+	for mid, p := range policies {
+		auth.SetMemoryPolicy(mid, p)
+	}
+
+	log.Println("authority policies loaded")
+
+	// --------------------
 	// Start ingress listeners
 	// --------------------
 
 	for _, gate := range cfg.Ingress {
 
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConn(conn, store)
+			modbus.HandleConn(conn, store, auth)
 		}
 
 		onRawIngest := func(conn net.Conn) {

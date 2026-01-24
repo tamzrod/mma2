@@ -1,5 +1,20 @@
 // tools/raw_ingest_send.go
+//
+// HISTORICAL / RETIRED TOOL
+//
+// This file previously served as a raw-ingest sender used during early
+// validation of the Raw Ingest protocol.
+//
+// It is intentionally preserved as documentation and reference.
+// It is NOT an executable tool and MUST NOT define func main().
+//
+// The original implementation is kept below as commented reference.
+// Do not re-enable without explicit architectural review.
+//
+
 package main
+
+/*
 
 import (
 	"encoding/binary"
@@ -14,16 +29,14 @@ func main() {
 	}
 	defer conn.Close()
 
-	/*
-		Raw Ingest Packet
-		Magic:   'R''I'
-		Version: 0x01
-		Area:    3 (Holding Registers)
-		UnitID:  1
-		Addr:    10
-		Count:   1
-		Value:   0x1234
-	*/
+	// Raw Ingest Packet
+	// Magic:   'R''I'
+	// Version: 0x01
+	// Area:    3 (Holding Registers)
+	// UnitID:  1
+	// Addr:    10
+	// Count:   1
+	// Value:   0x1234
 
 	pkt := make([]byte, 12)
 
@@ -48,3 +61,5 @@ func main() {
 
 	fmt.Printf("raw ingest response = %d\n", resp[0])
 }
+
+*/

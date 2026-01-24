@@ -2,26 +2,117 @@ listeners:
   - id: modbus-502
     listen: ":502"
     protocols:
-      raw_ingest: true
+      modbus: true
+
+  - id: modbus-1502
+    listen: ":1502"
+    protocols:
+      modbus: true
 
 memory:
   memories:
+
+    # =====================================
+    # Port 502 / Unit ID 1
+    # Full Modbus map, sealed
+    # =====================================
     "502:1":
       port: 502
       unit_id: 1
 
+      state_sealing:
+        enabled: true
+
+      access_control:
+        rules:
+          - id: scada-read
+            ip:
+              - 192.168.1.0/24
+            allow:
+              function_codes: [1,2,3,4]
+
       coils:
         start: 0
         count: 128
-
       discrete_inputs:
         start: 0
         count: 128
-
       holding_registers:
         start: 0
         count: 128
-
       input_registers:
         start: 0
         count: 128
+
+
+    # =====================================
+    # Port 502 / Unit ID 2
+    # NO coils, NO discrete inputs
+    # Register-only device
+    # =====================================
+    "502:2":
+      port: 502
+      unit_id: 2
+
+      state_sealing:
+        enabled: false
+
+      access_control:
+        rules:
+          - id: engineer-full
+            ip:
+              - 192.168.1.50
+            allow:
+              function_codes: [3,4,6,16]
+
+      holding_registers:
+        start: 0
+        count: 64
+      input_registers:
+        start: 0
+        count: 64
+
+
+    # =====================================
+    # Port 1502 / Unit ID 1
+    # Digital-only RTU
+    # =====================================
+    "1502:1":
+      port: 1502
+      unit_id: 1
+
+      access_control:
+        rules:
+          - id: ot-lan-read
+            ip:
+              - 10.0.0.0/24
+            allow:
+              function_codes: [1,2]
+
+      coils:
+        start: 0
+        count: 32
+      discrete_inputs:
+        start: 0
+        count: 32
+
+
+    # =====================================
+    # Port 1502 / Unit ID 5
+    # Input-register-only sensor
+    # =====================================
+    "1502:5":
+      port: 1502
+      unit_id: 5
+
+      access_control:
+        rules:
+          - id: read-only
+            ip:
+              - 10.0.0.0/24
+            allow:
+              function_codes: [4]
+
+      input_registers:
+        start: 0
+        count: 16
