@@ -4,9 +4,8 @@ package config
 // Config is the root configuration for MMA2.
 // It describes structure only, not behavior.
 type Config struct {
-	Ingress    []IngressGate `yaml:"listeners"`
-	Transports Transports    `yaml:"transports"`
-	Memory     MemoryConfig  `yaml:"memory"`
+	Ingress []IngressGate `yaml:"listeners"`
+	Memory  MemoryConfig `yaml:"memory"`
 }
 
 // --------------------
@@ -14,34 +13,10 @@ type Config struct {
 // --------------------
 
 // IngressGate defines a TCP ingress gate.
-// It owns the listener and protocol admission only.
+// It owns the listener only.
 type IngressGate struct {
-	ID             string           `yaml:"id"`
-	Listen         string           `yaml:"listen"`
-	Protocols      IngressProtocols `yaml:"protocols"`
-	DiscardUnknown bool             `yaml:"discard_unknown"`
-}
-
-type IngressProtocols struct {
-	Modbus    bool `yaml:"modbus"`
-	RawIngest bool `yaml:"raw_ingest"`
-}
-
-// --------------------
-// Transports
-// --------------------
-
-type Transports struct {
-	Modbus    ModbusTransport    `yaml:"modbus"`
-	RawIngest RawIngestTransport `yaml:"raw_ingest"`
-}
-
-type ModbusTransport struct {
-	Enabled bool `yaml:"enabled"`
-}
-
-type RawIngestTransport struct {
-	Enabled bool `yaml:"enabled"`
+	ID     string `yaml:"id"`
+	Listen string `yaml:"listen"`
 }
 
 // --------------------
@@ -63,7 +38,11 @@ type MemoryDefinition struct {
 	HoldingRegs    Area `yaml:"holding_registers"`
 	InputRegs      Area `yaml:"input_registers"`
 
-	// Optional per-memory authorization policy (Phase 3A.5)
+	// Optional state sealing configuration.
+	// Presence = enabled.
+	StateSealing *StateSealingConfig `yaml:"state_sealing"`
+
+	// Optional per-memory authorization policy
 	Policy *MemoryPolicyConfig `yaml:"policy"`
 }
 
@@ -73,7 +52,20 @@ type Area struct {
 }
 
 // --------------------
-// Policy (Phase 3A.5)
+// State Sealing
+// --------------------
+
+// StateSealingConfig defines where the sealing flag lives.
+// Semantics:
+//   0 = sealed
+//   1 = unsealed
+type StateSealingConfig struct {
+	Area    string `yaml:"area"`    // "coil" (only supported value for now)
+	Address uint16 `yaml:"address"`
+}
+
+// --------------------
+// Policy
 // --------------------
 
 // MemoryPolicyConfig declares access rules scoped to a single memory definition.

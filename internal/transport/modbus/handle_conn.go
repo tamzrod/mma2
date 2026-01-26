@@ -54,6 +54,33 @@ func HandleConn(
 			UnitID: uint16(req.UnitID),
 		}
 
+		// --------------------
+		// STATE SEALING
+		// Presence-based: if state_sealing is configured and flag == 0 → Device Busy
+		// --------------------
+		if mem, ok := store.Get(mid); ok {
+			if seal := mem.StateSealing(); seal != nil {
+				buf := []byte{0}
+				if err := mem.ReadBits(seal.Area, seal.Address, 1, buf); err != nil {
+					pdu := BuildExceptionPDU(req.FunctionCode, 0x06) // Device Busy
+					frame := BuildResponse(req, pdu)
+					_, _ = conn.Write(frame)
+					continue
+				}
+
+				// 0 = sealed, 1 = unsealed
+				if (buf[0] & 0x01) == 0 {
+					pdu := BuildExceptionPDU(req.FunctionCode, 0x06) // Device Busy
+					frame := BuildResponse(req, pdu)
+					_, _ = conn.Write(frame)
+					continue
+				}
+			}
+		}
+
+		// --------------------
+		// ACCESS CONTROL (unchanged)
+		// --------------------
 		decision := auth.Evaluate(authority.Request{
 			MemoryID:     mid,
 			SourceIP:     srcIP,
@@ -67,6 +94,9 @@ func HandleConn(
 			continue
 		}
 
+		// --------------------
+		// DISPATCH
+		// --------------------
 		pdu := DispatchMemory(store, req)
 		if pdu == nil {
 			return

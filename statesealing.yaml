@@ -1,0 +1,33 @@
+listeners:
+  - id: default
+    listen: ":502"
+
+memory:
+  memories:
+    test:
+      port: 502
+      unit_id: 1
+
+      # ---- STATE SEALING ----
+      # 0 = sealed (default)
+      # 1 = unsealed (written by raw ingest)
+      state_sealing:
+        area: coil
+        address: 0
+
+      # ---- MEMORY LAYOUT ----
+      coils:
+        start: 0
+        count: 1000
+
+      holding_registers:
+        start: 0
+        count: 1000
+
+      policy:
+        rules:
+          - id: local-read
+            source_ip:
+              - 127.0.0.1
+              - ::1
+            allow_fc: [1,2,3,4]

@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"MMA2.0/internal/memorycore"
 )
@@ -51,6 +52,46 @@ func BuildMemoryStore(cfg *Config) (*memorycore.Store, error) {
 		if err != nil {
 			// key is for human/debug context only
 			return nil, fmt.Errorf("memory[%s]: create failed: %w", key, err)
+		}
+
+		// --------------------
+		// State Sealing (presence = enabled)
+		// state_sealing:
+		//   area: coil
+		//   address: 0
+		// --------------------
+		if def.StateSealing != nil {
+			area := strings.ToLower(strings.TrimSpace(def.StateSealing.Area))
+			if area != "coil" {
+				return nil, fmt.Errorf("memory[%s]: state_sealing.area must be 'coil'", key)
+			}
+
+			// Ensure coils are allocated if state sealing references a coil flag.
+			if def.Coils.Count == 0 {
+				return nil, fmt.Errorf("memory[%s]: state_sealing requires coils to be allocated", key)
+			}
+
+			// Bounds check: address must be within [start, start+count-1]
+			start := def.Coils.Start
+			count := def.Coils.Count
+			addr := def.StateSealing.Address
+
+			// Avoid overflow: compute end as uint32
+			endExclusive := uint32(start) + uint32(count)
+			if uint32(addr) < uint32(start) || uint32(addr) >= endExclusive {
+				return nil, fmt.Errorf(
+					"memory[%s]: state_sealing.address (%d) out of bounds for coils [%d..%d)",
+					key,
+					addr,
+					start,
+					uint16(endExclusive),
+				)
+			}
+
+			mem.SetStateSealing(memorycore.StateSealingDef{
+				Area:    memorycore.AreaCoils,
+				Address: addr,
+			})
 		}
 
 		// Identity is numeric and protocol-aligned.

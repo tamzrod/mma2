@@ -67,18 +67,17 @@ func (l *Listener) handleConn(
 
 	switch proto {
 	case ProtocolModbus:
-		// Modbus is implicit and always enabled
+		// Modbus is always enabled
 		onModbus(bc)
 		return
 
 	case ProtocolRawIngest:
-		if l.cfg.Protocols.RawIngest {
-			onRawIngest(bc)
-			return
-		}
-	}
+		// Raw ingest is always enabled
+		onRawIngest(bc)
+		return
 
-	if l.cfg.DiscardUnknown {
+	default:
+		// Unknown protocol → close
 		conn.Close()
 	}
 }

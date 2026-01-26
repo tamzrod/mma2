@@ -26,6 +26,9 @@ type Memory struct {
 
 	holdingRegs []uint16
 	inputRegs   []uint16
+
+	// ---- State Sealing metadata (no behavior here) ----
+	stateSealing *StateSealingDef
 }
 
 func NewMemory(layouts MemoryLayouts) (*Memory, error) {

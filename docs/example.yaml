@@ -1,118 +1,121 @@
+# ============================================================
+# MMA 2.0 – Canonical Example Configuration
+# Demonstrates:
+# - Multiple listeners (ports)
+# - Multiple Unit IDs per port
+# - Access control (RO / RW / WO)
+# - State sealing (on selected units only)
+#
+# Runtime identity remains: (Port, UnitID)
+# ============================================================
+
 listeners:
-  - id: modbus-502
+  # ------------------------------------------------------------
+  # Listener on standard Modbus TCP port 502
+  # ------------------------------------------------------------
+  - id: main-modbus
     listen: ":502"
-    protocols:
-      modbus: true
 
-  - id: modbus-1502
-    listen: ":1502"
-    protocols:
-      modbus: true
+    memory:
+      # ========================================================
+      # UNIT ID 1 — OPEN DEVICE (Beginner-friendly)
+      # ========================================================
+      # Purpose:
+      # - First-time users
+      # - Inverters / meters
+      # - "It just works" example
+      #
+      # Behavior:
+      # - Any IP
+      # - All Modbus function codes allowed
+      # - NO state sealing
+      # ========================================================
+      - name: inverter_open
+        unit_id: 1
 
-memory:
-  memories:
+        coils:
+          start: 0
+          count: 128
 
-    # =====================================
-    # Port 502 / Unit ID 1
-    # Full Modbus map, sealed
-    # =====================================
-    "502:1":
-      port: 502
-      unit_id: 1
+        holding_registers:
+          start: 0
+          count: 256
 
-      state_sealing:
-        enabled: true
+        policy:
+          rules:
+            - id: allow-all
+              source_ip:
+                - 0.0.0.0/0      # all IPv4
+                - ::/0           # all IPv6
+              allow: rw          # rw == full Modbus access
 
-      access_control:
-        rules:
-          - id: scada-read
-            ip:
-              - 192.168.1.0/24
-            allow:
-              function_codes: [1,2,3,4]
+      # ========================================================
+      # UNIT ID 2 — CONTROLLED DEVICE (Advanced)
+      # ========================================================
+      # Purpose:
+      # - Setpoints
+      # - PPC / EMS interfaces
+      #
+      # Behavior:
+      # - Read-only for LAN
+      # - Write-only for localhost / controller
+      # - State sealing enabled
+      # ========================================================
+      - name: ppc_control
+        unit_id: 2
 
-      coils:
-        start: 0
-        count: 128
-      discrete_inputs:
-        start: 0
-        count: 128
-      holding_registers:
-        start: 0
-        count: 128
-      input_registers:
-        start: 0
-        count: 128
+        # --------------------
+        # STATE SEALING
+        # --------------------
+        # Default: sealed (flag = 0)
+        # Unseal by writing 1 to coil 0 via RAW INGEST
+        state_sealing:
+          area: coil
+          address: 0
 
+        coils:
+          start: 0
+          count: 16
 
-    # =====================================
-    # Port 502 / Unit ID 2
-    # NO coils, NO discrete inputs
-    # Register-only device
-    # =====================================
-    "502:2":
-      port: 502
-      unit_id: 2
+        holding_registers:
+          start: 0
+          count: 64
 
-      state_sealing:
-        enabled: false
+        policy:
+          rules:
+            # Local controller — full control
+            - id: controller-rw
+              source_ip:
+                - 127.0.0.1
+                - ::1
+              allow: rw
 
-      access_control:
-        rules:
-          - id: engineer-full
-            ip:
-              - 192.168.1.50
-            allow:
-              function_codes: [3,4,6,16]
+            # Plant LAN — read-only
+            - id: lan-read
+              source_ip:
+                - 192.168.2.0/24
+              allow: ro
 
-      holding_registers:
-        start: 0
-        count: 64
-      input_registers:
-        start: 0
-        count: 64
+  # ------------------------------------------------------------
+  # Second listener on port 503 (example: test / lab network)
+  # ------------------------------------------------------------
+  - id: lab-modbus
+    listen: ":503"
 
+    memory:
+      # ========================================================
+      # UNIT ID 1 — LAB DEVICE
+      # ========================================================
+      - name: lab_meter
+        unit_id: 1
 
-    # =====================================
-    # Port 1502 / Unit ID 1
-    # Digital-only RTU
-    # =====================================
-    "1502:1":
-      port: 1502
-      unit_id: 1
+        holding_registers:
+          start: 0
+          count: 32
 
-      access_control:
-        rules:
-          - id: ot-lan-read
-            ip:
-              - 10.0.0.0/24
-            allow:
-              function_codes: [1,2]
-
-      coils:
-        start: 0
-        count: 32
-      discrete_inputs:
-        start: 0
-        count: 32
-
-
-    # =====================================
-    # Port 1502 / Unit ID 5
-    # Input-register-only sensor
-    # =====================================
-    "1502:5":
-      port: 1502
-      unit_id: 5
-
-      access_control:
-        rules:
-          - id: read-only
-            ip:
-              - 10.0.0.0/24
-            allow:
-              function_codes: [4]
-
-      input_registers:
-        start: 0
-        count: 16
+        policy:
+          rules:
+            - id: lab-read
+              source_ip:
+                - 10.10.0.0/16
+              allow: ro
