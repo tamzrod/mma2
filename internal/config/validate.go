@@ -1,24 +1,30 @@
-// internal/config/validate.go
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"net/netip"
+	"strings"
+)
 
 // Validate performs structural validation on the loaded configuration.
-// It enforces presence, bounds, and consistency only.
+// It enforces bounds and consistency only, and supports BOTH config shapes:
+//
+//   1) Legacy global memory model: cfg.Memory.Memories (each with explicit port)
+//   2) Nested listener model: listeners[].memory[] (port inferred from listeners[].listen)
+//
+// Runtime memory identity is ALWAYS (Port, UnitID).
 func Validate(cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
 
-	if len(cfg.Ingress) == 0 {
-		return fmt.Errorf("listeners: must define at least one ingress gate")
-	}
-
+	// Ingress is optional in strict structural sense; validate only if present.
 	if err := validateIngress(cfg.Ingress); err != nil {
 		return err
 	}
 
-	if err := validateMemory(cfg.Memory); err != nil {
+	// Validate memory definitions from BOTH sources and enforce identity consistency.
+	if err := validateAllMemories(cfg); err != nil {
 		return err
 	}
 
@@ -33,6 +39,7 @@ func validateIngress(gates []IngressGate) error {
 	seen := make(map[string]struct{})
 
 	for i, g := range gates {
+		// ID is treated as schema identity (consistency).
 		if g.ID == "" {
 			return fmt.Errorf("listeners[%d]: id is required", i)
 		}
@@ -41,65 +48,156 @@ func validateIngress(gates []IngressGate) error {
 		}
 		seen[g.ID] = struct{}{}
 
-		if g.Listen == "" {
+		if strings.TrimSpace(g.Listen) == "" {
 			return fmt.Errorf("listeners[%d]: listen is required", i)
 		}
 
-		// Modbus is implicit and always enabled.
-		// Raw ingest is optional and validated elsewhere if configured.
+		// If nested memories exist, the port must be parseable
+		if len(g.Memory) > 0 {
+			if _, err := parseListenPort(g.Listen); err != nil {
+				return fmt.Errorf(
+					"listeners[%d] (%s): invalid listen %q: %w",
+					i, g.ID, g.Listen, err,
+				)
+			}
+		}
 	}
 
 	return nil
 }
 
 // --------------------
-// Memory validation
+// Memory validation (both models)
 // --------------------
 
-func validateMemory(mem MemoryConfig) error {
-	if len(mem.Memories) == 0 {
-		return fmt.Errorf("memory: must define at least one memory")
+type memIdentity struct {
+	port uint16
+	unit uint16
+}
+
+func validateAllMemories(cfg *Config) error {
+	seen := make(map[memIdentity]string)
+
+	// 1) Legacy model
+	for key, def := range cfg.Memory.Memories {
+		if err := validateLegacyMemoryDef(key, def); err != nil {
+			return err
+		}
+
+		id := memIdentity{port: def.Port, unit: def.UnitID}
+		if prev, ok := seen[id]; ok {
+			return fmt.Errorf(
+				"memory identity conflict: (port=%d unit=%d) defined in %s and memory[%s]",
+				id.port, id.unit, prev, key,
+			)
+		}
+		seen[id] = fmt.Sprintf("memory[%s]", key)
 	}
 
-	for key, def := range mem.Memories {
-		if def.Port == 0 {
-			return fmt.Errorf("memory[%s]: port must be > 0", key)
-		}
-		if def.UnitID == 0 {
-			return fmt.Errorf("memory[%s]: unit_id must be > 0", key)
+	// 2) Nested listener model
+	for li, l := range cfg.Ingress {
+		if len(l.Memory) == 0 {
+			continue
 		}
 
-		if err := validateArea(key, "coils", def.Coils); err != nil {
-			return err
-		}
-		if err := validateArea(key, "discrete_inputs", def.DiscreteInputs); err != nil {
-			return err
-		}
-		if err := validateArea(key, "holding_registers", def.HoldingRegs); err != nil {
-			return err
-		}
-		if err := validateArea(key, "input_registers", def.InputRegs); err != nil {
-			return err
+		port, err := parseListenPort(l.Listen)
+		if err != nil {
+			return fmt.Errorf(
+				"listeners[%d] (%s): invalid listen %q: %w",
+				li, l.ID, l.Listen, err,
+			)
 		}
 
-		if err := validatePolicy(key, def.Policy); err != nil {
-			return err
+		for mi, def := range l.Memory {
+			if err := validateNestedMemoryDef(li, mi, l.ID, port, def); err != nil {
+				return err
+			}
+
+			id := memIdentity{port: port, unit: def.UnitID}
+			path := fmt.Sprintf("listeners[%d](%s).memory[%d]", li, l.ID, mi)
+
+			if prev, ok := seen[id]; ok {
+				return fmt.Errorf(
+					"memory identity conflict: (port=%d unit=%d) defined in %s and %s",
+					id.port, id.unit, prev, path,
+				)
+			}
+			seen[id] = path
 		}
 	}
 
+	return nil
+}
+
+func validateLegacyMemoryDef(memKey string, def MemoryDefinition) error {
+	if def.Port == 0 {
+		return fmt.Errorf("memory[%s]: port must be > 0", memKey)
+	}
+	if def.UnitID > 0xFF {
+		return fmt.Errorf("memory[%s]: unit_id must be <= 255", memKey)
+	}
+
+	if err := validateAreas(memKey, def); err != nil {
+		return err
+	}
+	if err := validateStateSealing(memKey, def); err != nil {
+		return err
+	}
+	if err := validatePolicy(memKey, def.Policy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateNestedMemoryDef(li, mi int, listenerID string, port uint16, def MemoryDefinition) error {
+	memKey := fmt.Sprintf("listeners[%d](%s).memory[%d]", li, listenerID, mi)
+
+	if port == 0 {
+		return fmt.Errorf("%s: derived port must be > 0", memKey)
+	}
+	if def.UnitID > 0xFF {
+		return fmt.Errorf("%s: unit_id must be <= 255", memKey)
+	}
+
+	if err := validateAreas(memKey, def); err != nil {
+		return err
+	}
+	if err := validateStateSealing(memKey, def); err != nil {
+		return err
+	}
+	if err := validatePolicy(memKey, def.Policy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateAreas(memKey string, def MemoryDefinition) error {
+	if err := validateArea(memKey, "coils", def.Coils); err != nil {
+		return err
+	}
+	if err := validateArea(memKey, "discrete_inputs", def.DiscreteInputs); err != nil {
+		return err
+	}
+	if err := validateArea(memKey, "holding_registers", def.HoldingRegs); err != nil {
+		return err
+	}
+	if err := validateArea(memKey, "input_registers", def.InputRegs); err != nil {
+		return err
+	}
 	return nil
 }
 
 func validateArea(memKey, name string, a Area) error {
 	if a.Count == 0 {
-		// zero-sized areas are allowed and treated as disabled
 		return nil
 	}
 
 	end := uint32(a.Start) + uint32(a.Count)
 	if end > 0x10000 {
 		return fmt.Errorf(
-			"memory[%s].%s: start(%d)+count(%d) exceeds 16-bit address space",
+			"%s.%s: start(%d)+count(%d) exceeds 16-bit address space",
 			memKey, name, a.Start, a.Count,
 		)
 	}
@@ -107,23 +205,80 @@ func validateArea(memKey, name string, a Area) error {
 	return nil
 }
 
+// --------------------
+// State sealing validation (structural only)
+// --------------------
+
+func validateStateSealing(memKey string, def MemoryDefinition) error {
+	if def.StateSealing == nil {
+		return nil
+	}
+
+	area := strings.ToLower(strings.TrimSpace(def.StateSealing.Area))
+	if area != "coil" {
+		return fmt.Errorf("%s.state_sealing.area must be 'coil'", memKey)
+	}
+
+	if def.Coils.Count == 0 {
+		return fmt.Errorf("%s.state_sealing requires coils to be allocated", memKey)
+	}
+
+	start := def.Coils.Start
+	count := def.Coils.Count
+	addr := def.StateSealing.Address
+
+	endExclusive := uint32(start) + uint32(count)
+	if uint32(addr) < uint32(start) || uint32(addr) >= endExclusive {
+		return fmt.Errorf(
+			"%s.state_sealing.address (%d) out of bounds for coils [%d..%d)",
+			memKey, addr, start, uint16(endExclusive),
+		)
+	}
+
+	return nil
+}
+
+// --------------------
+// Policy validation (structural only)
+// --------------------
+
 func validatePolicy(memKey string, p *MemoryPolicyConfig) error {
 	if p == nil {
-		// Missing policy is allowed. Authority will default deny when enforced.
 		return nil
 	}
 
 	for i, r := range p.Rules {
-		if r.ID == "" {
-			return fmt.Errorf("memory[%s].policy.rules[%d]: id is required", memKey, i)
+		rulePath := fmt.Sprintf("%s.policy.rules[%d]", memKey, i)
+
+		for j, s := range r.SourceIP {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if _, err := parseIPOrCIDR(s); err != nil {
+				return fmt.Errorf(
+					"%s.source_ip[%d]: invalid ip/cidr %q: %v",
+					rulePath, j, s, err,
+				)
+			}
 		}
-		if len(r.SourceIP) == 0 {
-			return fmt.Errorf("memory[%s].policy.rules[%d] (%s): source_ip must not be empty", memKey, i, r.ID)
-		}
-		if len(r.AllowFC) == 0 {
-			return fmt.Errorf("memory[%s].policy.rules[%d] (%s): allow_fc must not be empty", memKey, i, r.ID)
+
+		for j, fc := range r.AllowFC {
+			if fc == 0 {
+				return fmt.Errorf("%s.allow_fc[%d]: invalid function code 0", rulePath, j)
+			}
 		}
 	}
 
 	return nil
+}
+
+func parseIPOrCIDR(s string) (any, error) {
+	if pfx, err := netip.ParsePrefix(s); err == nil {
+		return pfx, nil
+	}
+	if addr, err := netip.ParseAddr(s); err == nil {
+		return addr, nil
+	}
+	return nil, fmt.Errorf("not an ip or cidr")
 }

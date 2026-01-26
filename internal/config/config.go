@@ -14,13 +14,20 @@ type Config struct {
 
 // IngressGate defines a TCP ingress gate.
 // It owns the listener only.
+//
+// NOTE:
+// Memory is OPTIONAL here for the new nested model.
+// The legacy global memory model is still supported.
 type IngressGate struct {
 	ID     string `yaml:"id"`
 	Listen string `yaml:"listen"`
+
+	// Optional nested memory definitions (NEW MODEL)
+	Memory []MemoryDefinition `yaml:"memory"`
 }
 
 // --------------------
-// Memory
+// Memory (LEGACY / CANONICAL RUNTIME MODEL)
 // --------------------
 
 // MemoryConfig declares all memory layouts.

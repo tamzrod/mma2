@@ -47,7 +47,9 @@ listeners:
               source_ip:
                 - 0.0.0.0/0      # all IPv4
                 - ::/0           # all IPv6
-              allow: rw          # rw == full Modbus access
+                - 127.0.0.1     # localhost
+                - ::1           # localhost IPv6
+              allow_fc: [1,2,3,4,5,6,15,16]       # rw == full Modbus access
 
       # ========================================================
       # UNIT ID 2 — CONTROLLED DEVICE (Advanced)
@@ -88,7 +90,7 @@ listeners:
               source_ip:
                 - 127.0.0.1
                 - ::1
-              allow: rw
+              allow_fc: [1,2,3,4,5,6,15,16]
 
             # Plant LAN — read-only
             - id: lan-read
@@ -100,7 +102,7 @@ listeners:
   # Second listener on port 503 (example: test / lab network)
   # ------------------------------------------------------------
   - id: lab-modbus
-    listen: ":503"
+    listen: ":504"
 
     memory:
       # ========================================================
