@@ -28,7 +28,7 @@ func HandleConn(conn net.Conn, store *memorycore.Store) {
 		if err != nil {
 			if err != io.EOF {
 				_, _ = conn.Write([]byte{RespRejected})
-				log.Printf("rawingest decode error: %v", err)
+				// log.Printf("rawingest decode error: %v", err)
 			}
 			return
 		}

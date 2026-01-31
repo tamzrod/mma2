@@ -1,0 +1,115 @@
+# ============================================================
+# MMA 2.0 – Real Test / Replicator Bring-Up Configuration
+#
+# Topology:
+#   502:1 → Source Pretender
+#   502:2 → Replicator Target Memory
+#   502:3 → Status Memory
+#
+# Characteristics:
+# - Single listener
+# - All access open (RW)
+# - No state sealing
+# - Full Modbus areas
+# - 500 registers per area
+#
+# Runtime identity: (Port, UnitID)
+# ============================================================
+
+listeners:
+  # ------------------------------------------------------------
+  # Main Modbus TCP listener
+  # ------------------------------------------------------------
+  - id: main-modbus
+    listen: ":502"
+
+    memory:
+      # ========================================================
+      # UNIT ID 1 — SOURCE PRETENDER
+      # ========================================================
+      - name: source_pretender
+        unit_id: 1
+
+        coils:
+          start: 0
+          count: 300
+
+        discrete_inputs:
+          start: 0
+          count: 300
+
+        holding_registers:
+          start: 0
+          count: 300
+
+        input_registers:
+          start: 0
+          count: 300
+
+        policy:
+          rules:
+            - id: allow-all
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [1,2,3,4,5,6,15,16]
+
+      # ========================================================
+      # UNIT ID 2 — REPLICATOR TARGET MEMORY
+      # ========================================================
+      - name: replicator_memory
+        unit_id: 2
+
+        coils:
+          start: 0
+          count: 500
+
+        discrete_inputs:
+          start: 0
+          count: 500
+
+        holding_registers:
+          start: 0
+          count: 500
+
+        input_registers:
+          start: 0
+          count: 500
+
+        policy:
+          rules:
+            - id: allow-all
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [1,2,3,4,5,6,15,16]
+
+      # ========================================================
+      # UNIT ID 3 — STATUS MEMORY
+      # ========================================================
+      - name: status_memory
+        unit_id: 3
+
+        coils:
+          start: 0
+          count: 500
+
+        discrete_inputs:
+          start: 0
+          count: 500
+
+        holding_registers:
+          start: 0
+          count: 40   # status block lives here (slots 0–19)
+
+        input_registers:
+          start: 0
+          count: 500
+
+        policy:
+          rules:
+            - id: allow-all
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [1,2,3,4,5,6,15,16]
