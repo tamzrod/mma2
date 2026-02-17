@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"time"
 
-	"MMA2.0/internal/memorycore"
-	"MMA2.0/internal/notify"
+	"mma2/internal/memorycore"
+	"mma2/internal/notify"
 )
 
 // DispatchMemory routes a Modbus request to memorycore.

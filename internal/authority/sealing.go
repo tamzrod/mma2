@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"MMA2.0/internal/memorycore"
+	"mma2/internal/memorycore"
 )
 
 // Sealing is policy state (NOT a memory lock).

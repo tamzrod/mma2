@@ -16,15 +16,15 @@ func NewStdoutAdapter() *StdoutAdapter {
 }
 
 func (a *StdoutAdapter) Emit(evt Event) {
-	name := ""
-	if evt.Name != nil {
-		name = *evt.Name
-	}
-
 	// DEBUG: CLI notify output disabled.
 	// Uncomment the block below for development troubleshooting.
 
 	/*
+		name := ""
+		if evt.Name != nil {
+			name = *evt.Name
+		}
+
 		log.Printf(
 			"[NOTIFY] port=%d unit=%d area=%s start=%d count=%d name=%s source=%s ip=%s ts=%s",
 			evt.Port,

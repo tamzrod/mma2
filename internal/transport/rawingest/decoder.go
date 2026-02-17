@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"MMA2.0/internal/memorycore"
+	"mma2/internal/memorycore"
 )
 
 const headerLen = 10 // Magic(2) Ver(1) Area(1) UnitID(2) Address(2) Count(2)

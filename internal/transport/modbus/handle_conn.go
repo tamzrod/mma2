@@ -7,9 +7,9 @@ import (
 	"net"
 	"net/netip"
 
-	"MMA2.0/internal/authority"
-	"MMA2.0/internal/memorycore"
-	"MMA2.0/internal/notify"
+	"mma2/internal/authority"
+	"mma2/internal/memorycore"
+	"mma2/internal/notify"
 )
 
 // HandleConn handles a single Modbus TCP connection.

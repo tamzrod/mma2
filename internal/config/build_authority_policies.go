@@ -6,8 +6,8 @@ import (
 	"net"
 	"strconv"
 
-	"MMA2.0/internal/authority"
-	"MMA2.0/internal/memorycore"
+	"mma2/internal/authority"
+	"mma2/internal/memorycore"
 )
 
 // BuildAuthorityPolicies translates config memory-scoped policy into runtime authority policies.

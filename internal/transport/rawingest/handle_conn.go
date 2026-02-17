@@ -7,8 +7,8 @@ import (
 	"net"
 	"time"
 
-	"MMA2.0/internal/memorycore"
-	"MMA2.0/internal/notify"
+	"mma2/internal/memorycore"
+	"mma2/internal/notify"
 )
 
 // HandleConn handles a single Raw Ingest TCP connection.

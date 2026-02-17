@@ -6,12 +6,12 @@ import (
 	"net"
 	"os"
 
-	"MMA2.0/internal/authority"
-	"MMA2.0/internal/config"
-	"MMA2.0/internal/ingress"
-	"MMA2.0/internal/notify"
-	"MMA2.0/internal/transport/modbus"
-	"MMA2.0/internal/transport/rawingest"
+	"mma2/internal/authority"
+	"mma2/internal/config"
+	"mma2/internal/ingress"
+	"mma2/internal/notify"
+	"mma2/internal/transport/modbus"
+	"mma2/internal/transport/rawingest"
 )
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 	log.Println("authority policies loaded")
 
 	// --------------------
-	// Notify (stdout debug adapter)
+	// Notify
 	// --------------------
 
 	var notifier *notify.Engine
@@ -62,9 +62,30 @@ func main() {
 	}
 
 	if registry != nil {
-		adapter := notify.NewStdoutAdapter()
+
+		var adapter notify.Adapter
+
+		// Influx adapter (optional)
+		if cfg.Notify != nil && cfg.Notify.Influx != nil {
+
+			influxCfg := cfg.Notify.Influx
+
+			adapter = notify.NewInfluxAdapter(
+				influxCfg.URL,
+				influxCfg.Org,
+				influxCfg.Bucket,
+				influxCfg.Token,
+				influxCfg.Measurement,
+			)
+
+			log.Println("notify engine enabled (influx adapter)")
+		} else {
+			adapter = notify.NewStdoutAdapter()
+			log.Println("notify engine enabled (stdout adapter)")
+		}
+
 		notifier = notify.NewEngine(registry, adapter, 256)
-		log.Println("notify engine enabled (stdout adapter)")
+
 	} else {
 		log.Println("notify engine disabled (no rules)")
 	}

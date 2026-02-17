@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"MMA2.0/internal/memorycore"
+	"mma2/internal/memorycore"
 )
 
 // BuildMemoryStore constructs a memorycore.Store from configuration.

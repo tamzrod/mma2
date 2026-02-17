@@ -4,7 +4,7 @@
 // internal/transport/raw/memory_adapter.go
 package raw
 
-import "MMA2.0/internal/runtime"
+import "mma2/internal/runtime"
 
 // memoryAdapter exposes runtime memory through RawWritableMemory.
 type memoryAdapter struct {

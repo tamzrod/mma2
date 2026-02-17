@@ -4,7 +4,7 @@
 // internal/transport/raw/resolver.go
 package raw
 
-import "MMA2.0/internal/runtime"
+import "mma2/internal/runtime"
 
 // RuntimeResolver resolves memories from the MMA runtime.
 type RuntimeResolver struct {

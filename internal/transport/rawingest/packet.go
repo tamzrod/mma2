@@ -1,7 +1,7 @@
 // internal/transport/rawingest/packet.go
 package rawingest
 
-import "MMA2.0/internal/memorycore"
+import "mma2/internal/memorycore"
 
 // Packet is a single raw-ingest write primitive.
 type Packet struct {

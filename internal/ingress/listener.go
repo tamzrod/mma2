@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	"MMA2.0/internal/config"
+	"mma2/internal/config"
 )
 
 // bufferedConn ensures all reads flow through a bufio.Reader that already peeked.

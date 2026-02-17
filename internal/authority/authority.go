@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"sync"
 
-	"MMA2.0/internal/memorycore"
+	"mma2/internal/memorycore"
 )
 
 // Modbus exception codes we use.

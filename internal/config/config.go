@@ -6,6 +6,31 @@ package config
 type Config struct {
 	Ingress []IngressGate `yaml:"listeners"`
 	Memory  MemoryConfig  `yaml:"memory"`
+
+	// Optional notify output configuration (adapters).
+	// Absence means notify engine has no external adapters configured.
+	Notify *NotifyOutputConfig `yaml:"notify"`
+}
+
+// --------------------
+// Notify Output (Adapters)
+// --------------------
+
+// NotifyOutputConfig declares optional notification adapters.
+// This is separate from per-memory notify rules.
+// This config only describes output sinks.
+type NotifyOutputConfig struct {
+	Influx *NotifyInfluxConfig `yaml:"influx"`
+}
+
+// NotifyInfluxConfig defines configuration for the InfluxDB adapter.
+// All fields required except Measurement.
+type NotifyInfluxConfig struct {
+	URL         string `yaml:"url"`
+	Token       string `yaml:"token"`
+	Org         string `yaml:"org"`
+	Bucket      string `yaml:"bucket"`
+	Measurement string `yaml:"measurement"`
 }
 
 // --------------------

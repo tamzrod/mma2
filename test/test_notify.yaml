@@ -44,3 +44,14 @@ listeners:
             - start: 102
               count: 3
               name: "hr_overlap_test"
+
+# --------------------
+# Notify Output (Influx Adapter)
+# --------------------
+notify:
+  influx:
+    url: "http://localhost:8086"
+    token: "10GFpHXviyibSlv9FsiXl_ywygAhDUzDmnv0hf7R6Gqm9rNgaRhmNbXLCaZk9FuyhbR0AH91CrkWkBZLEy5qjw=="
+    org: "sb"
+    bucket: "mma_notify"
+    measurement: "mma_write_events"

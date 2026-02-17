@@ -4,7 +4,7 @@ package config
 import (
 	"fmt"
 
-	"MMA2.0/internal/notify"
+	"mma2/internal/notify"
 )
 
 // BuildNotifyRegistry normalizes notify rules from configuration into an immutable registry.
