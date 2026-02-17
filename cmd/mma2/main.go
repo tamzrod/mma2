@@ -9,6 +9,7 @@ import (
 	"MMA2.0/internal/authority"
 	"MMA2.0/internal/config"
 	"MMA2.0/internal/ingress"
+	"MMA2.0/internal/notify"
 	"MMA2.0/internal/transport/modbus"
 	"MMA2.0/internal/transport/rawingest"
 )
@@ -19,10 +20,6 @@ func main() {
 	}
 
 	cfgPath := os.Args[1]
-
-	// --------------------
-	// Load + validate config
-	// --------------------
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
@@ -35,18 +32,10 @@ func main() {
 
 	log.Println("config loaded and validated successfully")
 
-	// --------------------
-	// Build memory store (authoritative)
-	// --------------------
-
 	store, err := config.BuildMemoryStore(cfg)
 	if err != nil {
 		log.Fatalf("memory build failed: %v", err)
 	}
-
-	// --------------------
-	// Build authority + policies
-	// --------------------
 
 	auth := authority.New()
 
@@ -62,17 +51,36 @@ func main() {
 	log.Println("authority policies loaded")
 
 	// --------------------
-	// Start ingress listeners
+	// Notify (stdout debug adapter)
+	// --------------------
+
+	var notifier *notify.Engine
+
+	registry, err := config.BuildNotifyRegistry(cfg)
+	if err != nil {
+		log.Fatalf("notify registry build failed: %v", err)
+	}
+
+	if registry != nil {
+		adapter := notify.NewStdoutAdapter()
+		notifier = notify.NewEngine(registry, adapter, 256)
+		log.Println("notify engine enabled (stdout adapter)")
+	} else {
+		log.Println("notify engine disabled (no rules)")
+	}
+
+	// --------------------
+	// Start ingress
 	// --------------------
 
 	for _, gate := range cfg.Ingress {
 
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConn(conn, store, auth)
+			modbus.HandleConn(conn, store, auth, notifier)
 		}
 
 		onRawIngest := func(conn net.Conn) {
-			rawingest.HandleConn(conn, store)
+			rawingest.HandleConn(conn, store, notifier)
 		}
 
 		l := ingress.NewListener(gate)
@@ -85,10 +93,6 @@ func main() {
 	}
 
 	log.Println("mma2 ingress started")
-
-	// --------------------
-	// Block forever
-	// --------------------
 
 	select {}
 }

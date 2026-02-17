@@ -3,8 +3,10 @@ package modbus
 
 import (
 	"encoding/binary"
+	"time"
 
 	"MMA2.0/internal/memorycore"
+	"MMA2.0/internal/notify"
 )
 
 // DispatchMemory routes a Modbus request to memorycore.
@@ -17,7 +19,11 @@ import (
 //   FC6  - Write Single Register (Holding Registers only)
 //   FC15 - Write Multiple Coils
 //   FC16 - Write Multiple Registers (Holding Registers only)
-func DispatchMemory(store *memorycore.Store, req *Request) []byte {
+//
+// Notification (optional):
+//   Emits ONLY after successful write commit (WriteBits/WriteRegs returns nil),
+//   and ONLY for write function codes (5/6/15/16).
+func DispatchMemory(store *memorycore.Store, notifier *notify.Engine, sourceIP string, req *Request) []byte {
 	switch req.FunctionCode {
 	case 1:
 		return handleReadBits(store, req, memorycore.AreaCoils)
@@ -28,13 +34,13 @@ func DispatchMemory(store *memorycore.Store, req *Request) []byte {
 	case 4:
 		return handleReadRegs(store, req, memorycore.AreaInputRegs)
 	case 5:
-		return handleWriteSingleCoil(store, req)
+		return handleWriteSingleCoil(store, notifier, sourceIP, req)
 	case 6:
-		return handleWriteSingleReg(store, req)
+		return handleWriteSingleReg(store, notifier, sourceIP, req)
 	case 15:
-		return handleWriteMultipleCoils(store, req)
+		return handleWriteMultipleCoils(store, notifier, sourceIP, req)
 	case 16:
-		return handleWriteMultipleRegs(store, req)
+		return handleWriteMultipleRegs(store, notifier, sourceIP, req)
 	default:
 		// Illegal Function
 		return BuildExceptionPDU(req.FunctionCode, 0x01)
@@ -82,7 +88,7 @@ func handleReadBits(store *memorycore.Store, req *Request, area memorycore.Area)
 	return BuildReadResponsePDU(req.FunctionCode, buf)
 }
 
-func handleWriteSingleCoil(store *memorycore.Store, req *Request) []byte {
+func handleWriteSingleCoil(store *memorycore.Store, notifier *notify.Engine, sourceIP string, req *Request) []byte {
 	decoded, err := DecodeWriteSingle(req.Payload)
 	if err != nil {
 		// Illegal Data Value
@@ -111,10 +117,12 @@ func handleWriteSingleCoil(store *memorycore.Store, req *Request) []byte {
 		return BuildExceptionPDU(req.FunctionCode, 0x02)
 	}
 
+	emitWriteEventModbus(notifier, req, sourceIP, notify.AreaCoils, decoded.Address, 1)
+
 	return BuildWriteSingleResponsePDU(req.FunctionCode, decoded.Address, decoded.Value)
 }
 
-func handleWriteMultipleCoils(store *memorycore.Store, req *Request) []byte {
+func handleWriteMultipleCoils(store *memorycore.Store, notifier *notify.Engine, sourceIP string, req *Request) []byte {
 	decoded, err := DecodeWriteMultipleBits(req.Payload)
 	if err != nil || decoded.Quantity == 0 {
 		// Illegal Data Value
@@ -131,6 +139,8 @@ func handleWriteMultipleCoils(store *memorycore.Store, req *Request) []byte {
 		// Illegal Data Address
 		return BuildExceptionPDU(req.FunctionCode, 0x02)
 	}
+
+	emitWriteEventModbus(notifier, req, sourceIP, notify.AreaCoils, decoded.Address, decoded.Quantity)
 
 	return BuildWriteMultipleResponsePDU(req.FunctionCode, decoded.Address, decoded.Quantity)
 }
@@ -157,7 +167,7 @@ func handleReadRegs(store *memorycore.Store, req *Request, area memorycore.Area)
 	return BuildReadResponsePDU(req.FunctionCode, buf)
 }
 
-func handleWriteSingleReg(store *memorycore.Store, req *Request) []byte {
+func handleWriteSingleReg(store *memorycore.Store, notifier *notify.Engine, sourceIP string, req *Request) []byte {
 	decoded, err := DecodeWriteSingle(req.Payload)
 	if err != nil {
 		// Illegal Data Value
@@ -178,10 +188,12 @@ func handleWriteSingleReg(store *memorycore.Store, req *Request) []byte {
 		return BuildExceptionPDU(req.FunctionCode, 0x02)
 	}
 
+	emitWriteEventModbus(notifier, req, sourceIP, notify.AreaHoldingRegisters, decoded.Address, 1)
+
 	return BuildWriteSingleResponsePDU(req.FunctionCode, decoded.Address, decoded.Value)
 }
 
-func handleWriteMultipleRegs(store *memorycore.Store, req *Request) []byte {
+func handleWriteMultipleRegs(store *memorycore.Store, notifier *notify.Engine, sourceIP string, req *Request) []byte {
 	decoded, err := DecodeWriteMultiple(req.Payload)
 	if err != nil || decoded.Quantity == 0 || int(decoded.Quantity) != len(decoded.Values) {
 		// Illegal Data Value
@@ -204,5 +216,32 @@ func handleWriteMultipleRegs(store *memorycore.Store, req *Request) []byte {
 		return BuildExceptionPDU(req.FunctionCode, 0x02)
 	}
 
+	emitWriteEventModbus(notifier, req, sourceIP, notify.AreaHoldingRegisters, decoded.Address, decoded.Quantity)
+
 	return BuildWriteMultipleResponsePDU(req.FunctionCode, decoded.Address, decoded.Quantity)
+}
+
+func emitWriteEventModbus(
+	notifier *notify.Engine,
+	req *Request,
+	sourceIP string,
+	area notify.AreaType,
+	start uint16,
+	count uint16,
+) {
+	if notifier == nil {
+		return
+	}
+
+	// Timestamp = OS wall clock, taken immediately after successful write commit
+	notifier.OnWrite(notify.Event{
+		Port:      req.Port,
+		UnitID:    uint16(req.UnitID),
+		Area:      area,
+		Start:     start,
+		Count:     count,
+		Source:    notify.SourceModbus,
+		SourceIP:  sourceIP,
+		Timestamp: time.Now(),
+	})
 }

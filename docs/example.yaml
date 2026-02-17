@@ -41,6 +41,10 @@ listeners:
           start: 0
           count: 256
 
+        input_registers:
+          start: 0
+          count: 256
+
         policy:
           rules:
             - id: allow-all

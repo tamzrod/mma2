@@ -1,0 +1,46 @@
+listeners:
+  - id: modbus-main
+    listen: ":1502"
+    memory:
+      - unit_id: 1
+
+        coils:
+          start: 0
+          count: 64
+
+        discrete_inputs:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 200
+
+        input_registers:
+          start: 0
+          count: 200
+
+        # Allow-all policy for testing
+        policy:
+          rules:
+            - id: "allow_all_test"
+              source_ip:
+                - "0.0.0.0/0"
+                - "::/0"
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
+
+        # Notify rules for testing
+        notify:
+          coils:
+            - start: 10
+              count: 5
+              name: "coil_range_A"
+
+          holding_registers:
+            - start: 100
+              count: 5
+              name: "hr_range_A"
+
+            - start: 102
+              count: 3
+              name: "hr_overlap_test"

@@ -1,3 +1,4 @@
+// internal/config/validate.go
 package config
 
 import (
@@ -39,7 +40,6 @@ func validateIngress(gates []IngressGate) error {
 	seen := make(map[string]struct{})
 
 	for i, g := range gates {
-		// ID is treated as schema identity (consistency).
 		if g.ID == "" {
 			return fmt.Errorf("listeners[%d]: id is required", i)
 		}
@@ -52,7 +52,6 @@ func validateIngress(gates []IngressGate) error {
 			return fmt.Errorf("listeners[%d]: listen is required", i)
 		}
 
-		// If nested memories exist, the port must be parseable
 		if len(g.Memory) > 0 {
 			if _, err := parseListenPort(g.Listen); err != nil {
 				return fmt.Errorf(
@@ -146,6 +145,9 @@ func validateLegacyMemoryDef(memKey string, def MemoryDefinition) error {
 	if err := validatePolicy(memKey, def.Policy); err != nil {
 		return err
 	}
+	if err := validateNotify(memKey, def.Notify); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -169,9 +171,66 @@ func validateNestedMemoryDef(li, mi int, listenerID string, port uint16, def Mem
 	if err := validatePolicy(memKey, def.Policy); err != nil {
 		return err
 	}
+	if err := validateNotify(memKey, def.Notify); err != nil {
+		return err
+	}
 
 	return nil
 }
+
+// --------------------
+// Notify validation (structural only)
+// --------------------
+
+func validateNotify(memKey string, n *NotifyConfig) error {
+	if n == nil {
+		return nil
+	}
+
+	if err := validateNotifyArea(memKey, "coils", n.Coils); err != nil {
+		return err
+	}
+	if err := validateNotifyArea(memKey, "discrete_inputs", n.DiscreteInputs); err != nil {
+		return err
+	}
+	if err := validateNotifyArea(memKey, "holding_registers", n.HoldingRegs); err != nil {
+		return err
+	}
+	if err := validateNotifyArea(memKey, "input_registers", n.InputRegs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateNotifyArea(memKey, area string, rules []NotifyRange) error {
+	for i, r := range rules {
+		rulePath := fmt.Sprintf("%s.notify.%s[%d]", memKey, area, i)
+
+		if r.Count == 0 {
+			return fmt.Errorf("%s: count must be > 0", rulePath)
+		}
+
+		start := uint32(r.Start)
+		count := uint32(r.Count)
+		end := start + count - 1
+
+		if end > 0xFFFF {
+			return fmt.Errorf(
+				"%s: start(%d)+count(%d) exceeds 16-bit address space",
+				rulePath,
+				r.Start,
+				r.Count,
+			)
+		}
+	}
+
+	return nil
+}
+
+// --------------------
+// Existing validation (unchanged)
+// --------------------
 
 func validateAreas(memKey string, def MemoryDefinition) error {
 	if err := validateArea(memKey, "coils", def.Coils); err != nil {
@@ -205,10 +264,6 @@ func validateArea(memKey, name string, a Area) error {
 	return nil
 }
 
-// --------------------
-// State sealing validation (structural only)
-// --------------------
-
 func validateStateSealing(memKey string, def MemoryDefinition) error {
 	if def.StateSealing == nil {
 		return nil
@@ -237,10 +292,6 @@ func validateStateSealing(memKey string, def MemoryDefinition) error {
 
 	return nil
 }
-
-// --------------------
-// Policy validation (structural only)
-// --------------------
 
 func validatePolicy(memKey string, p *MemoryPolicyConfig) error {
 	if p == nil {

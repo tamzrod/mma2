@@ -1,0 +1,205 @@
+[
+    {
+        "id": "3da0cd72f1f921d3",
+        "type": "tab",
+        "label": "test_notify_nodered",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "2e154ae6c3bfdcda",
+        "type": "modbus-write",
+        "z": "3da0cd72f1f921d3",
+        "name": "test",
+        "showStatusActivities": false,
+        "showErrors": true,
+        "showWarnings": true,
+        "unitid": "1",
+        "dataType": "Coil",
+        "adr": "10",
+        "quantity": "1",
+        "server": "0328f7307fb2f802",
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": false,
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "x": 360,
+        "y": 320,
+        "wires": [
+            [
+                "a1867f089a2282d9"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "a1867f089a2282d9",
+        "type": "debug",
+        "z": "3da0cd72f1f921d3",
+        "name": "debug 17",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 560,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "2b3988b0ad66afaa",
+        "type": "inject",
+        "z": "3da0cd72f1f921d3",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "1",
+        "payloadType": "num",
+        "x": 210,
+        "y": 320,
+        "wires": [
+            [
+                "2e154ae6c3bfdcda"
+            ]
+        ]
+    },
+    {
+        "id": "78e769ddce32aa67",
+        "type": "tcp request",
+        "z": "3da0cd72f1f921d3",
+        "name": "",
+        "server": "127.0.0.1",
+        "port": "1502",
+        "out": "time",
+        "ret": "buffer",
+        "splitc": "0",
+        "newline": "",
+        "trim": false,
+        "tls": "",
+        "x": 630,
+        "y": 380,
+        "wires": [
+            [
+                "8e759eaae9033730"
+            ]
+        ]
+    },
+    {
+        "id": "8e759eaae9033730",
+        "type": "debug",
+        "z": "3da0cd72f1f921d3",
+        "name": "debug 18",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 860,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "25e14c573e302945",
+        "type": "inject",
+        "z": "3da0cd72f1f921d3",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "[82,73,5,222,0,1,3,0,102,0,1,4,210]",
+        "payloadType": "bin",
+        "x": 230,
+        "y": 380,
+        "wires": [
+            [
+                "4de62cf1beff51f4"
+            ]
+        ]
+    },
+    {
+        "id": "4de62cf1beff51f4",
+        "type": "function",
+        "z": "3da0cd72f1f921d3",
+        "name": "function 6",
+        "func": "const VERSION = 0x01;\nconst UNIT_ID = 1;\nconst START_ADDR = 100;\nconst COUNT = 1;\n\nfunction buildPacket(area, dataBuf) {\n    const header = Buffer.alloc(10);\n\n    header[0] = 0x52; // 'R'\n    header[1] = 0x49; // 'I'\n    header[2] = VERSION;\n    header[3] = area;\n\n    header.writeUInt16BE(UNIT_ID, 4);\n    header.writeUInt16BE(START_ADDR, 6);\n    header.writeUInt16BE(COUNT, 8);\n\n    return Buffer.concat([header, dataBuf]);\n}\n\n// Holding register write (Area = 3)\nlet holdingBuf = Buffer.alloc(2);\nholdingBuf.writeUInt16BE(1234, 0);\n\nnode.send({\n    area: \"holding_registers\",\n    payload: buildPacket(3, holdingBuf)\n});\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 380,
+        "wires": [
+            [
+                "78e769ddce32aa67"
+            ]
+        ]
+    },
+    {
+        "id": "0328f7307fb2f802",
+        "type": "modbus-client",
+        "name": "",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "failureLogEnabled": true,
+        "tcpHost": "10.11.60.47",
+        "tcpPort": "1502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": 9600,
+        "serialDatabits": 8,
+        "serialStopbits": 1,
+        "serialParity": "none",
+        "serialConnectionDelay": 100,
+        "serialAsciiResponseStartDelimiter": "0x3A",
+        "unit_id": 1,
+        "commandDelay": 1,
+        "clientTimeout": 1000,
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": 2000,
+        "parallelUnitIdsAllowed": true,
+        "showErrors": false,
+        "showWarnings": true,
+        "showLogs": true
+    },
+    {
+        "id": "0391e5e0b89ec3b4",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-modbus": "5.45.2"
+        }
+    }
+]

@@ -9,6 +9,7 @@ import (
 
 	"MMA2.0/internal/authority"
 	"MMA2.0/internal/memorycore"
+	"MMA2.0/internal/notify"
 )
 
 // HandleConn handles a single Modbus TCP connection.
@@ -16,6 +17,7 @@ func HandleConn(
 	conn net.Conn,
 	store *memorycore.Store,
 	auth *authority.Authority,
+	notifier *notify.Engine, // OPTIONAL
 ) {
 	defer conn.Close()
 
@@ -39,6 +41,7 @@ func HandleConn(
 		log.Printf("modbus: invalid source IP: %v", err)
 		return
 	}
+	srcIPStr := srcIP.String()
 
 	for {
 		req, err := ReadRequest(conn, port)
@@ -97,7 +100,7 @@ func HandleConn(
 		// --------------------
 		// DISPATCH
 		// --------------------
-		pdu := DispatchMemory(store, req)
+		pdu := DispatchMemory(store, notifier, srcIPStr, req)
 		if pdu == nil {
 			return
 		}

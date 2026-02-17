@@ -5,7 +5,7 @@ package config
 // It describes structure only, not behavior.
 type Config struct {
 	Ingress []IngressGate `yaml:"listeners"`
-	Memory  MemoryConfig `yaml:"memory"`
+	Memory  MemoryConfig  `yaml:"memory"`
 }
 
 // --------------------
@@ -45,6 +45,11 @@ type MemoryDefinition struct {
 	HoldingRegs    Area `yaml:"holding_registers"`
 	InputRegs      Area `yaml:"input_registers"`
 
+	// Optional notification rules (rule-centric, write-only).
+	// Presence enables notify rule configuration for this memory.
+	// Normalization/validation happens outside memorycore.
+	Notify *NotifyConfig `yaml:"notify"`
+
 	// Optional state sealing configuration.
 	// Presence = enabled.
 	StateSealing *StateSealingConfig `yaml:"state_sealing"`
@@ -59,6 +64,27 @@ type Area struct {
 }
 
 // --------------------
+// Notify (Rule-Centric, Write-Only)
+// --------------------
+
+// NotifyConfig declares notify rules per memory area.
+// Each entry is an independent rule.
+// Overlaps are allowed; no merging; no deduplication.
+type NotifyConfig struct {
+	Coils          []NotifyRange `yaml:"coils"`
+	DiscreteInputs []NotifyRange `yaml:"discrete_inputs"`
+	HoldingRegs    []NotifyRange `yaml:"holding_registers"`
+	InputRegs      []NotifyRange `yaml:"input_registers"`
+}
+
+// NotifyRange is a single notify rule for an area.
+type NotifyRange struct {
+	Start uint16  `yaml:"start"`
+	Count uint16  `yaml:"count"`
+	Name  *string `yaml:"name,omitempty"`
+}
+
+// --------------------
 // State Sealing
 // --------------------
 
@@ -67,7 +93,7 @@ type Area struct {
 //   0 = sealed
 //   1 = unsealed
 type StateSealingConfig struct {
-	Area    string `yaml:"area"`    // "coil" (only supported value for now)
+	Area    string `yaml:"area"` // "coil" (only supported value for now)
 	Address uint16 `yaml:"address"`
 }
 
