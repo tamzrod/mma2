@@ -18,9 +18,10 @@ In MMA 2.0:
 > **Configuration defines the appliance.**
 
 Configuration:
-- declares ports
-- declares Unit IDs per port
-- declares memory sizes per Unit ID
+- declares listeners (ports)
+- declares Unit IDs per listener
+- declares memory areas and sizes per Unit ID
+- declares optional policies, notifications, and state sealing
 
 There is no other source of truth.
 
@@ -28,6 +29,7 @@ Code must not:
 - infer missing configuration
 - repair invalid configuration
 - generate defaults implicitly
+- provide runtime configuration reload
 
 ---
 
@@ -59,16 +61,176 @@ Partial startup is not allowed.
 
 ---
 
-## Required Structural Properties
+## Configuration Structure
 
-A valid configuration must define:
+Configuration is organized into sections:
 
-- at least one port
-- at least one Unit ID per port
-- at least one memory area per Unit ID
-- strictly positive memory sizes
+### Listeners (Required)
 
-If any of these are missing, configuration is invalid.
+```yaml
+listeners:
+  - id: "gate_1"
+    listen: "0.0.0.0:502"
+    memory:
+      - unit_id: 1
+        coils:
+          start: 0
+          count: 100
+        discrete_inputs:
+          start: 0
+          count: 100
+        holding_registers:
+          start: 0
+          count: 100
+        input_registers:
+          start: 0
+          count: 100
+```
+
+Fields:
+- `id`: Unique identifier for the listener (for logging)
+- `listen`: Address and port (IP:port format)
+- `memory`: Array of memory definitions for this listener
+
+### Memory Definition (Required)
+
+Each memory definition must specify:
+- `unit_id`: Modbus Unit ID (1-255)
+- `coils`: Start and count (optional)
+- `discrete_inputs`: Start and count (optional)
+- `holding_registers`: Start and count (optional)
+- `input_registers`: Start and count (optional)
+- `policy`: Optional per-memory access control rules
+- `notify`: Optional notification rules
+- `state_sealing`: Optional sealing configuration
+
+At least one memory area must be present.
+
+### Memory Areas
+
+```yaml
+coils:
+  start: 0
+  count: 100
+```
+
+- `start`: Zero-based starting address
+- `count`: Number of values (must be > 0)
+
+All four areas are optional, but at least one must be defined for a memory.
+
+---
+
+## State Sealing Configuration
+
+State Sealing is optional per memory.
+
+```yaml
+state_sealing:
+  area: coils
+  address: 0
+```
+
+Fields:
+- `area`: Memory area containing the sealing flag (coils, discrete_inputs, holding_registers, or input_registers)
+- `address`: Zero-based address within that area
+
+**Semantics:**
+- Flag bit == 0 → sealed (Modbus blocked)
+- Flag bit == 1 → unsealed (Modbus allowed)
+
+**Validation:**
+- If `state_sealing` is present, the area must exist in the memory layout
+- The address must be within bounds for that area
+- Configuration loading fails if validation fails
+
+**Default:**
+- If `state_sealing` is absent, the memory is unsealed (default behavior)
+
+---
+
+## Policy Configuration
+
+Policies are optional per memory.
+
+```yaml
+policy:
+  rules:
+    - id: "allow_local"
+      source_ip:
+        - "127.0.0.1"
+        - "192.168.0.0/16"
+      allow_fc:
+        - 1
+        - 2
+        - 3
+        - 4
+    - id: "deny_all"
+      source_ip:
+        - "0.0.0.0/0"
+      allow_fc: []
+```
+
+Fields:
+- `rules`: Array of access control rules evaluated top-down
+- `id`: Unique rule identifier
+- `source_ip`: List of CIDR or bare IP addresses (bare IPs treated as /32 or /128)
+- `allow_fc`: List of allowed Modbus function codes (empty = deny)
+
+**Evaluation:**
+- Rules are evaluated top-down
+- First matching rule determines access
+- Default deny if no rules match or no policy present
+
+---
+
+## Notification Configuration
+
+Notifications are optional per memory.
+
+```yaml
+notify:
+  coils:
+    - start: 0
+      count: 10
+      name: "critical_bits"
+    - start: 10
+      count: 5
+  holding_registers:
+    - start: 0
+      count: 100
+      name: "power_readings"
+```
+
+Fields:
+- Per-area notify rules (coils, discrete_inputs, holding_registers, input_registers)
+- `start`: Start address
+- `count`: Range size
+- `name`: Optional human-readable rule name
+
+**Semantics:**
+- Each rule is independent
+- One write may match multiple rules
+- Overlaps are allowed
+- No merging or deduplication
+
+---
+
+## Notification Output Configuration
+
+Output adapters are optional globally.
+
+```yaml
+notify:
+  influx:
+    url: "http://localhost:8086"
+    org: "mma"
+    bucket: "events"
+    token: "mytoken"
+    measurement: "mma_notify"
+```
+
+If no output is configured and notify rules exist, events are sent to stdout for debugging.
 
 ---
 
@@ -76,12 +238,12 @@ If any of these are missing, configuration is invalid.
 
 Configuration must encode the authority model exactly:
 
-Port  
+Listener (Port)  
 → Unit ID  
 → Memory
 
 Rules:
-- Unit IDs are scoped to a port
+- Unit IDs are scoped to a listener (port)
 - Memory exists only within a Unit ID
 - Memory cannot be shared or aliased
 
@@ -94,25 +256,27 @@ If configuration attempts to violate these rules, it must be rejected.
 Configuration must be explicit.
 
 The following are forbidden:
-- implicit ports
+- implicit listeners
 - implicit Unit IDs
 - implicit memory areas
 - implicit sizes
+- implicit policies
+- implicit addresses
 
 If a value is required and missing, startup must fail.
 
 ---
 
-## Separation from Transports
+## Startup Sequence
 
-Configuration defines **what exists**, not **how it is accessed**.
+1. Load configuration file
+2. Parse YAML structure
+3. Validate all sections (ingress, memory, policies, sealing, notify)
+4. Fail fast on any validation error
+5. Build internal data structures (memory store, authority policies, notify registry)
+6. Start listeners
 
-Transport-specific settings:
-- must not alter authority
-- must not define memory
-- must not introduce routing
-
-Configuration that mixes these concerns is invalid.
+If any step fails, the process exits cleanly without starting.
 
 ---
 
@@ -127,14 +291,26 @@ The process must exit cleanly and predictably.
 
 ---
 
+## Supported Memory Identities
+
+Memory identity is always:
+
+```
+(Port:uint16, UnitID:uint16)
+```
+
+Runtime resolves all requests using this pair.
+
+---
+
 ## Stability Guarantee
 
 The configuration contract is designed to be stable.
 
-New fields may be added in the future.
+New optional fields may be added in the future.
 Existing rules must not be weakened.
 
-Any change that alters authority semantics is a breaking change.
+Any change that alters the authority model or validation semantics is a breaking change.
 
 ---
 

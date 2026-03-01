@@ -6,38 +6,7 @@
 
 ---
 
-## 1. State Sealing (Phase 3C)
-
-**Goal:**  
-Provide a runtime mechanism to temporarily block access to a memory while preserving protocol correctness.
-
-**Current State:**
-- Sealing model exists (`authority.Sealing`)
-- Semantics are defined and correct
-- Priority order is enforced:
-  1. Sealing → Device Busy (0x06)
-  2. Policy → Illegal Function (0x01)
-  3. Memory access
-
-**TODO:**
-- Decide control surface for seal / unseal:
-  - Raw ingest command
-  - Reserved control register
-  - Internal API only (initial)
-- Ensure sealing is:
-  - Per `(Port, UnitID)`
-  - Atomic
-  - Reversible
-- Add minimal observability (log on seal/unseal)
-
-**Non-goals:**
-- No persistence
-- No timers
-- No auto-unseal
-
----
-
-## 2. Firewall (Ingress-Level Hard Gate)
+## 1. Firewall (Ingress-Level Hard Gate)
 
 **Goal:**  
 Drop unauthorized traffic **before protocol parsing**.
@@ -65,7 +34,7 @@ Drop unauthorized traffic **before protocol parsing**.
 
 ---
 
-## 3. YAML Reorganization (Human-Friendly Layer)
+## 2. YAML Reorganization (Human-Friendly Layer)
 
 **Goal:**  
 Improve readability without changing internal identity rules.
