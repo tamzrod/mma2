@@ -3,7 +3,7 @@
 # Demonstrates:
 # - Multiple listeners (ports)
 # - Multiple Unit IDs per port
-# - Access control (RO / RW / WO)
+# - Access control with explicit allow_fc
 # - State sealing (on selected units only)
 #
 # Runtime identity remains: (Port, UnitID)
@@ -30,8 +30,7 @@ listeners:
       # - All Modbus function codes allowed
       # - NO state sealing
       # ========================================================
-      - name: inverter_open
-        unit_id: 1
+      - unit_id: 1
 
         coils:
           start: 0
@@ -67,8 +66,7 @@ listeners:
       # - Write-only for localhost / controller
       # - State sealing enabled
       # ========================================================
-      - name: ppc_control
-        unit_id: 2
+      - unit_id: 2
 
         # --------------------
         # STATE SEALING
@@ -76,6 +74,7 @@ listeners:
         # Default: sealed (flag = 0)
         # Unseal by writing 1 to coil 0 via RAW INGEST
         state_sealing:
+            # IMPORTANT: area must be "coil" (singular) - this is the ONLY supported value
           area: coil
           address: 0
 
@@ -100,7 +99,7 @@ listeners:
             - id: lan-read
               source_ip:
                 - 192.168.2.0/24
-              allow: ro
+              allow_fc: [1,3,4]  # Read coils (FC1), Read holding regs (FC3), Read input regs (FC4)
 
   # ------------------------------------------------------------
   # Second listener on port 503 (example: test / lab network)
@@ -112,8 +111,7 @@ listeners:
       # ========================================================
       # UNIT ID 1 — LAB DEVICE
       # ========================================================
-      - name: lab_meter
-        unit_id: 1
+      - unit_id: 1
 
         holding_registers:
           start: 0
@@ -124,4 +122,4 @@ listeners:
             - id: lab-read
               source_ip:
                 - 10.10.0.0/16
-              allow: ro
+              allow_fc: [3,4]  # Read holding regs (FC3), Read input regs (FC4)

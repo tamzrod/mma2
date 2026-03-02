@@ -87,6 +87,8 @@ listeners:
           count: 100
 ```
 
+**IMPORTANT:** Memory definitions MUST be nested under `listeners[].memory`. The legacy root-level `memory.memories` format is NOT supported and will cause startup failure.
+
 Fields:
 - `id`: Unique identifier for the listener (for logging)
 - `listen`: Address and port (IP:port format)
@@ -95,7 +97,7 @@ Fields:
 ### Memory Definition (Required)
 
 Each memory definition must specify:
-- `unit_id`: Modbus Unit ID (1-255)
+- `unit_id`: Modbus Unit ID (0-255)
 - `coils`: Start and count (optional)
 - `discrete_inputs`: Start and count (optional)
 - `holding_registers`: Start and count (optional)
@@ -127,21 +129,22 @@ State Sealing is optional per memory.
 
 ```yaml
 state_sealing:
-  area: coils
+  area: coil
   address: 0
 ```
 
 Fields:
-- `area`: Memory area containing the sealing flag (coils, discrete_inputs, holding_registers, or input_registers)
-- `address`: Zero-based address within that area
+- `area`: Memory area containing the sealing flag. **MUST be "coil" (singular) - this is the ONLY supported value.**
+- `address`: Zero-based address within the coils area
 
 **Semantics:**
 - Flag bit == 0 → sealed (Modbus blocked)
 - Flag bit == 1 → unsealed (Modbus allowed)
 
 **Validation:**
-- If `state_sealing` is present, the area must exist in the memory layout
-- The address must be within bounds for that area
+- If `state_sealing` is present, the area must be set to "coil"
+- The coils area must exist in the memory layout
+- The address must be within bounds for the coils area
 - Configuration loading fails if validation fails
 
 **Default:**
@@ -230,7 +233,10 @@ notify:
     measurement: "mma_notify"
 ```
 
-If no output is configured and notify rules exist, events are sent to stdout for debugging.
+**Behavior:**
+- If `notify.influx` is configured: InfluxDB adapter is used
+- If `notify.influx` is missing: stdout adapter is used (events logged to console)
+- Influx configuration is NOT validated at startup
 
 ---
 
