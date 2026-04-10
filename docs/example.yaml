@@ -9,6 +9,10 @@
 # Runtime identity remains: (Port, UnitID)
 # ============================================================
 
+# Optional: enable verbose protocol-level logging (e.g. malformed packets).
+# Defaults to false when absent.
+# debug: true
+
 listeners:
   # ------------------------------------------------------------
   # Listener on standard Modbus TCP port 502

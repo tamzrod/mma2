@@ -108,7 +108,7 @@ func main() {
 	for _, gate := range cfg.Ingress {
 
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConn(conn, store, auth, notifier)
+			modbus.HandleConn(conn, store, auth, notifier, cfg.Debug)
 		}
 
 		onRawIngest := func(conn net.Conn) {

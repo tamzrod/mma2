@@ -13,11 +13,13 @@ import (
 )
 
 // HandleConn handles a single Modbus TCP connection.
+// debug controls whether protocol-level read errors are logged.
 func HandleConn(
 	conn net.Conn,
 	store *memorycore.Store,
 	auth *authority.Authority,
 	notifier *notify.Engine, // OPTIONAL
+	debug bool,
 ) {
 	defer conn.Close()
 
@@ -46,7 +48,7 @@ func HandleConn(
 	for {
 		req, err := ReadRequest(conn, port)
 		if err != nil {
-			if err != io.EOF {
+			if err != io.EOF && debug {
 				log.Printf("modbus read error: %v", err)
 			}
 			return

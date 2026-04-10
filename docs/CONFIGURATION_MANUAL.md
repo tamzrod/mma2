@@ -18,8 +18,9 @@ For the formal configuration contract and validation rules, see [04_CONFIGURATIO
 6. [State Sealing Configuration](#state-sealing-configuration)
 7. [Access Control (Policy)](#access-control-policy)
 8. [Notification Configuration](#notification-configuration)
-9. [Common Use Cases](#common-use-cases)
-10. [Validation and Troubleshooting](#validation-and-troubleshooting)
+9. [Debug Logging](#debug-logging)
+10. [Common Use Cases](#common-use-cases)
+11. [Validation and Troubleshooting](#validation-and-troubleshooting)
 
 ---
 
@@ -58,6 +59,8 @@ listeners:
 MMA 2.0 uses YAML configuration files with the following top-level sections:
 
 ```yaml
+debug: false        # OPTIONAL - Enable verbose protocol-level logging (default: false)
+
 listeners:          # REQUIRED - TCP ingress definitions
   - id: ...
     listen: ...
@@ -74,6 +77,7 @@ notify:             # OPTIONAL - Global notification output adapters
 3. **Legacy Model Not Supported**: Root-level `memory.memories` is NOT supported and causes startup failure
 4. **Immutability**: Configuration is loaded once at startup and never reloaded
 5. **Fail-Fast**: Invalid configuration prevents startup entirely
+6. **Silent by Default**: Protocol-level read errors are suppressed unless `debug: true`
 
 ---
 
@@ -606,6 +610,64 @@ notify:
 - **Overlaps Allowed**: One write can match multiple rules
 - **No Deduplication**: Multiple events may be generated for overlapping rules
 - **Write-Only**: Notifications only trigger on write operations (FC 5, 6, 15, 16)
+
+---
+
+## Debug Logging
+
+### Overview
+
+MMA 2.0 suppresses protocol-level read errors by default. In production environments, events such as port-scanner probes or clients that send malformed Modbus frames produce an `invalid PDU length` condition. Logging these on every occurrence creates noise without operational value.
+
+The `debug` flag controls whether these errors are emitted to the log.
+
+### Configuration
+
+```yaml
+# Top-level option — place before "listeners"
+debug: false   # default; omit entirely for the same result
+```
+
+| Value | Behavior |
+|-------|----------|
+| `false` (default) | Protocol-level read errors are silently discarded |
+| `true` | Protocol-level read errors are written to the log |
+
+### When to Enable
+
+Enable `debug: true` when:
+
+- Integrating a new Modbus client and its framing needs verification
+- Diagnosing unexpected connection drops
+- Troubleshooting an `invalid PDU length` message observed during a previous run
+
+Disable (or omit) in production to keep terminal output clean.
+
+### What Is Logged
+
+When `debug: true`, errors such as the following appear in the log:
+
+```
+modbus read error: invalid PDU length
+modbus read error: invalid MBAP length
+```
+
+These indicate a frame was received whose MBAP header specifies a PDU length of zero or less. This is valid protocol-level rejection behavior — the connection is closed and all memory and authority state remains unaffected.
+
+### Example
+
+```yaml
+debug: true
+
+listeners:
+  - id: "main"
+    listen: "0.0.0.0:502"
+    memory:
+      - unit_id: 1
+        holding_registers:
+          start: 0
+          count: 100
+```
 
 ---
 
