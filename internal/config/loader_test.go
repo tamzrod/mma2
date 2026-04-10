@@ -126,34 +126,28 @@ func TestNormaliseYAMLBytes_IdempotentOnLF(t *testing.T) {
 }
 
 // TestLoad_NullByte verifies that a config file with embedded NUL bytes is
-// accepted after normalisation strips the disallowed control characters.
+// rejected with a clear error, since NUL bytes are valid UTF-8 but cause YAML
+// parse failures and must not be silently stripped.
 func TestLoad_NullByte(t *testing.T) {
-	// Insert a NUL byte (0x00) into an otherwise valid YAML document.
 	content := []byte("listeners:\x00\n  - id: test\n    listen: \":5020\"\n    memory:\n      - unit_id: 1\n        holding_registers:\n          start: 0\n          count: 10\n")
 
 	path := writeTemp(t, content)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("unexpected error with NUL byte in input: %v", err)
-	}
-	if len(cfg.Ingress) != 1 {
-		t.Fatalf("expected 1 ingress gate, got %d", len(cfg.Ingress))
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for config with NUL byte, got nil")
 	}
 }
 
 // TestLoad_MiscControlChars verifies that form-feed, vertical-tab, and DEL
-// bytes are stripped so that the YAML parser does not reject the file.
+// bytes cause a YAML parse error rather than being silently stripped, since
+// these are valid UTF-8 but rejected by the YAML parser.
 func TestLoad_MiscControlChars(t *testing.T) {
-	// Inject form-feed (0x0C), vertical-tab (0x0B), and DEL (0x7F).
 	content := []byte("\x0C\x0B\x7Flisteners:\n  - id: test\n    listen: \":5020\"\n    memory:\n      - unit_id: 1\n        holding_registers:\n          start: 0\n          count: 10\n")
 
 	path := writeTemp(t, content)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("unexpected error with misc control chars in input: %v", err)
-	}
-	if len(cfg.Ingress) != 1 {
-		t.Fatalf("expected 1 ingress gate, got %d", len(cfg.Ingress))
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for config with control characters, got nil")
 	}
 }
 
@@ -167,19 +161,24 @@ func TestNormaliseYAMLBytes_PreservesTabAndLF(t *testing.T) {
 	}
 }
 
-// TestIsDisallowedControl spot-checks the byte classifier.
-func TestIsDisallowedControl(t *testing.T) {
-	allowed := []byte{0x09 /* TAB */, 0x0A /* LF */, 0x20 /* SP */, 0x41 /* A */, 0xFF}
-	for _, b := range allowed {
-		if isDisallowedControl(b) {
-			t.Errorf("byte 0x%02X should be allowed but was classified as disallowed", b)
-		}
-	}
+// TestLoad_InvalidUTF8 verifies that a config file with invalid UTF-8 bytes is
+// rejected before any parsing takes place.
+func TestLoad_InvalidUTF8(t *testing.T) {
+	// 0x80 is an invalid UTF-8 start byte on its own.
+	content := append([]byte("listeners:\n"), 0x80, '\n')
 
-	disallowed := []byte{0x00, 0x01, 0x08, 0x0B, 0x0C, 0x0E, 0x1F, 0x7F}
-	for _, b := range disallowed {
-		if !isDisallowedControl(b) {
-			t.Errorf("byte 0x%02X should be disallowed but was classified as allowed", b)
-		}
+	path := writeTemp(t, content)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for config with invalid UTF-8, got nil")
+	}
+}
+
+// TestLoad_LoneCR verifies that a lone carriage return is preserved (not
+// converted to LF) by normaliseYAMLBytes, since only CRLF pairs are normalised.
+func TestLoad_LoneCR(t *testing.T) {
+	cr := normaliseYAMLBytes([]byte("a\rb"))
+	if string(cr) != "a\rb" {
+		t.Fatalf("normalise converted lone CR: got %q", cr)
 	}
 }
