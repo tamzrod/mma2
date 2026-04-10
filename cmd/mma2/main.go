@@ -23,6 +23,7 @@ func main() {
 	log.Printf("mma2 v%s starting", version.Version)
 
 	cfgPath := os.Args[1]
+	log.Printf("config path: %s", cfgPath)
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
