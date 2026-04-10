@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"mma2/internal/authority"
 	"mma2/internal/config"
@@ -16,13 +18,18 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("usage: mma2 <config.yaml>")
+	if len(os.Args) != 2 {
+		log.Fatalf("usage: mma2 <config.yaml>")
+	}
+
+	cfgPath := os.Args[1]
+
+	ext := strings.ToLower(filepath.Ext(cfgPath))
+	if ext != ".yaml" && ext != ".yml" {
+		log.Fatalf("config path must end in .yaml or .yml, got: %s", cfgPath)
 	}
 
 	log.Printf("mma2 v%s starting", version.Version)
-
-	cfgPath := os.Args[1]
 	log.Printf("config path: %s", cfgPath)
 
 	cfg, err := config.Load(cfgPath)
