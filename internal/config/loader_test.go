@@ -175,17 +175,10 @@ func TestLoad_InvalidUTF8(t *testing.T) {
 }
 
 // TestLoad_LoneCR verifies that a lone carriage return is preserved (not
-// converted to LF), since only CRLF pairs are normalised.
+// converted to LF) by normaliseYAMLBytes, since only CRLF pairs are normalised.
 func TestLoad_LoneCR(t *testing.T) {
-	// A lone \r produces a YAML parse error; we just confirm it is not
-	// silently converted so the behaviour remains deterministic.
-	content := []byte("key: value\rother: thing\n")
-	path := writeTemp(t, content)
-	// We do not assert success or failure – only that Load does not panic and
-	// that normaliseYAMLBytes itself preserves the lone CR.
 	cr := normaliseYAMLBytes([]byte("a\rb"))
 	if string(cr) != "a\rb" {
 		t.Fatalf("normalise converted lone CR: got %q", cr)
 	}
-	_ = path // file written; Load result is intentionally not checked here
 }
