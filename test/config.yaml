@@ -1,0 +1,77 @@
+# -------------------------------------------------
+# LISTENERS
+# -------------------------------------------------
+listeners:
+
+  # ===============================================
+  # PORT 502 (MAIN)
+  # ===============================================
+  - id: ppc-502
+    listen: ":502"
+
+    memory:
+      - unit_id: 1
+
+        state_sealing:
+          area: coil
+          address: 299
+
+        coils:
+          start: 0
+          count: 300
+
+        discrete_inputs:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 300
+
+        input_registers:
+          start: 0
+          count: 64
+
+        policy:
+          rules:
+            - id: allow-all-debug
+              source_ip:
+                - 0.0.0.0/0
+              allow_fc: [1,2,3,4,5,6,15,16]
+
+
+  # ===============================================
+  # PORT 503
+  # ===============================================
+  - id: ppc-503
+    listen: ":503"
+
+    memory:
+      - unit_id: 1
+
+        state_sealing:
+          area: coil
+          address: 299
+
+        coils:
+          start: 0
+          count: 300
+
+        discrete_inputs:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 300
+
+        input_registers:
+          start: 0
+          count: 64
+
+        policy:
+          rules:
+            - id: allow-all-debug
+              source_ip:
+                - 0.0.0.0/0
+              allow_fc: [1,2,3,4,5,6,15,16]
