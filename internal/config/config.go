@@ -10,6 +10,10 @@ type Config struct {
 	// Optional notify output configuration (adapters).
 	// Absence means notify engine has no external adapters configured.
 	Notify *NotifyOutputConfig `yaml:"notify"`
+
+	// Debug enables verbose protocol-level logging (e.g. malformed packets).
+	// Defaults to false when the key is absent from the config file.
+	Debug bool `yaml:"debug"`
 }
 
 // --------------------
