@@ -65,6 +65,19 @@ Partial startup is not allowed.
 
 Configuration is organized into sections:
 
+### Debug (Optional)
+
+```yaml
+debug: false   # omit or set to false to suppress protocol-level log output
+```
+
+`debug` is an optional top-level boolean (default: `false` when absent).
+
+When `false` (default): protocol-level read errors such as malformed Modbus frames are silently discarded.  
+When `true`: those errors are emitted to the log, which is useful during integration testing or troubleshooting.
+
+This setting has no effect on memory behavior, authority enforcement, or steady-state operation.
+
 ### Listeners (Required)
 
 ```yaml
