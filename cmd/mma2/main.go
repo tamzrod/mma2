@@ -12,12 +12,15 @@ import (
 	"mma2/internal/notify"
 	"mma2/internal/transport/modbus"
 	"mma2/internal/transport/rawingest"
+	"mma2/internal/version"
 )
 
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("usage: mma2 <config.yaml>")
 	}
+
+	log.Printf("mma2 v%s starting", version.Version)
 
 	cfgPath := os.Args[1]
 
