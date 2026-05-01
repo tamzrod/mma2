@@ -1,0 +1,126 @@
+# -------------------------------------------------
+# POLICY TEST CONFIG
+#
+# Purpose: verify IP and function-code permission enforcement.
+#
+# Two listeners:
+#
+#   Port 5100 — units WITH explicit policy rules
+#     unit_id 1: allow all IPv4 (0.0.0.0/0), full read+write FCs
+#     unit_id 2: allow all IPv4 (0.0.0.0/0), read-only FCs
+#     unit_id 3: allow restricted subnet, full access
+#
+#   Port 5101 — unit WITHOUT any policy (default deny)
+#     unit_id 1: no policy block → all requests denied regardless of IP/FC
+#
+# NOTE: 0.0.0.0/0 is the correct CIDR for "all IPv4".
+#       0.0.0.0/24 covers only the range 0.0.0.0–0.0.0.255 and is wrong
+#       for an allow-all rule.
+# -------------------------------------------------
+
+listeners:
+
+  # =============================================
+  # PORT 5100 — units with explicit policy rules
+  # =============================================
+  - id: policy-test-5100
+    listen: ":5100"
+
+    memory:
+
+      # -------------------------------------------
+      # Unit 1 — allow-all IPv4, full read+write
+      # Expected: any IPv4 client may use FC 1,2,3,4,5,6,15,16
+      # -------------------------------------------
+      - unit_id: 1
+
+        coils:
+          start: 0
+          count: 64
+
+        discrete_inputs:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 100
+
+        input_registers:
+          start: 0
+          count: 100
+
+        policy:
+          rules:
+            - id: allow-all-ipv4-rw
+              source_ip:
+                - 0.0.0.0/0   # all IPv4 — correct form of "allow any"
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
+
+      # -------------------------------------------
+      # Unit 2 — allow-all IPv4, read-only
+      # Expected: any IPv4 client may use FC 1,2,3,4; FC 5,6,15,16 denied
+      # -------------------------------------------
+      - unit_id: 2
+
+        coils:
+          start: 0
+          count: 64
+
+        discrete_inputs:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 100
+
+        input_registers:
+          start: 0
+          count: 100
+
+        policy:
+          rules:
+            - id: allow-all-ipv4-ro
+              source_ip:
+                - 0.0.0.0/0   # all IPv4
+              allow_fc: [1, 2, 3, 4]  # read-only: Read Coils, Read Discrete Inputs,
+                                      #            Read Holding Regs, Read Input Regs
+
+      # -------------------------------------------
+      # Unit 3 — restricted subnet + localhost, full access
+      # Expected: 192.168.1.x and 127.0.0.1 allowed; other IPs denied
+      # -------------------------------------------
+      - unit_id: 3
+
+        holding_registers:
+          start: 0
+          count: 64
+
+        policy:
+          rules:
+            - id: allow-local-subnet-rw
+              source_ip:
+                - 127.0.0.1
+                - 192.168.1.0/24
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
+
+  # =============================================
+  # PORT 5101 — unit with NO policy (default deny)
+  # =============================================
+  - id: policy-test-5101
+    listen: ":5101"
+
+    memory:
+
+      # -------------------------------------------
+      # Unit 1 — no policy block
+      # Expected: ALL requests denied (exception 0x01 Illegal Function)
+      # regardless of source IP or function code.
+      # This is the default-deny behavior when policy is absent.
+      # -------------------------------------------
+      - unit_id: 1
+
+        holding_registers:
+          start: 0
+          count: 64
