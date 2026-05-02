@@ -93,12 +93,14 @@ These are separate systems with different trigger conditions, different event mo
 
 ### Optional Fields (Aggregation Only)
 
-| Field        | Type    | Description                                                               |
-|--------------|---------|---------------------------------------------------------------------------|
-| `count`      | integer | Number of events suppressed and merged into this summary event            |
-| `window_sec` | integer | Duration in seconds of the aggregation window that produced this summary  |
+| Field        | Type    | Description                                                                                     |
+|--------------|---------|-----------------------------------------------------------------------------------------------|
+| `count`      | integer | Number of suppressed events within the window. Does NOT include the current (triggering) event. |
+| `window_sec` | integer | Duration in seconds of the aggregation window that produced this summary.                       |
 
 `count` and `window_sec` are only present on summary events emitted at the end of an aggregation window. A count of `1` is never emitted; the first event in a window is always emitted individually without these fields.
+
+`count` represents **only** the number of events suppressed within the window. It does **not** include the current event that triggered window expiry detection.
 
 ### Enum Values
 
@@ -160,46 +162,50 @@ When an event arrives for a key that has an active window and `now < window_star
 
 **Step 3 — Window expiry:**
 
-When `now >= window_start + window_sec` for an active key:
+When `now >= window_start + window_sec` for an active key and a new event arrives:
 
-- If `suppressed_count > 0`:
-  1. Emit a summary event with:
-     - `ts`: current time (emission time, not window start)
-     - all key fields (`src_ip`, `function_code`, `action`, `status`, `port`, `unit`)
-     - `count`: value of `suppressed_count`
-     - `window_sec`: configured window duration
-  2. Clear the window state for this key.
-- If `suppressed_count == 0`:
-  1. Clear the window state for this key. Emit nothing.
+1. If `suppressed_count > 0`:
+   1. Emit a summary event **FIRST** with:
+      - `ts`: current time (emission time, not window start)
+      - all key fields (`src_ip`, `function_code`, `action`, `status`, `port`, `unit`)
+      - `count`: value of `suppressed_count`
+      - `window_sec`: configured window duration
+   2. Emit the current (triggering) event **SECOND**, immediately after the summary, with no `count` or `window_sec` fields.
+   3. Clear the window state and open a new window for this key.
+2. If `suppressed_count == 0`:
+   1. Clear the window state for this key.
+   2. Emit the current event immediately. Open a new window.
+
+Window expiry is evaluated **only during event processing**. There are no background timers that trigger event emission.
 
 **Step 4 — New event after window expiry:**
 
-If a new event arrives for a key whose window has expired, treat it as Step 1: emit immediately, open a new window.
+If a new event arrives for a key whose window has expired, treat it as Step 3 above (summary emitted first if applicable, then the current event, new window opened).
 
 ### Timing Behavior
 
 - Window duration is configured globally as `window` (in seconds).
 - Window start is the timestamp of the first event in the window.
-- Window expiry is checked lazily: on the next event for the same key, or during TTL cleanup.
-- There is no background goroutine continuously flushing windows. Expiry occurs on access.
+- Window expiry is checked lazily: **only on the next event for the same key**. There are no background timers that trigger event emission.
+- Expiry occurs on access, not on a schedule.
 - Summary events are emitted at the moment of expiry detection, not at the scheduled window boundary.
+
+**Window expiry is evaluated only during event processing. No background goroutine triggers emission.**
 
 ### Reset Behavior
 
 - A window resets when its expiry is reached and state is cleared.
 - There is no early reset. An active window cannot be cancelled.
-- If no subsequent events arrive for a key within the window, the suppressed count is lost. Summary events are only emitted if a new event triggers expiry detection, or TTL cleanup triggers it.
+- If no subsequent events arrive for a key within the window, the suppressed count is lost. Summary events are only emitted when a new event triggers expiry detection.
 
 ### Decision Summary
 
-| Condition                                     | Action                                   |
-|-----------------------------------------------|------------------------------------------|
-| New key, no active window                     | Emit immediately, open window            |
-| Same key, window active, not yet expired      | Suppress, increment counter              |
-| Same key, window expired, counter > 0         | Emit summary, clear window, open new     |
-| Same key, window expired, counter == 0        | Clear window, emit immediately, open new |
-| TTL cleanup fires, counter > 0                | Emit summary, remove key                 |
-| TTL cleanup fires, counter == 0               | Remove key silently                      |
+| Condition                                     | Action                                                              |
+|-----------------------------------------------|---------------------------------------------------------------------|
+| New key, no active window                     | Emit immediately, open window                                       |
+| Same key, window active, not yet expired      | Suppress, increment counter                                         |
+| Same key, window expired, counter > 0         | Emit summary FIRST, emit current event SECOND, clear window, open new |
+| Same key, window expired, counter == 0        | Clear window, emit current event immediately, open new              |
 
 ---
 
@@ -221,12 +227,24 @@ This map exists only in process memory. It is not persisted, replicated, or rest
 
 A background cleanup pass runs at configurable intervals (recommended: `window * 2`).
 
+Cleanup is **strictly a memory hygiene mechanism**.
+
+Responsibilities:
+- Remove expired keys from the map.
+- Free memory.
+
+Cleanup MUST NOT:
+- Emit events.
+- Flush counters.
+- Trigger any external output.
+
+All event emission is strictly event-driven and occurs only during request processing.
+
 During cleanup:
 
 1. Iterate all keys in the map.
-2. For each key where `now >= window_start + window_sec`:
-   - If `suppressed_count > 0`: emit a summary event, then delete the key.
-   - If `suppressed_count == 0`: delete the key silently.
+2. For each key where `now >= window_start + ttl`:
+   - Delete the key silently, regardless of `suppressed_count`.
 
 Cleanup intervals are best-effort. Cleanup does not guarantee precise timing. It guarantees that stale state is eventually removed.
 
@@ -246,7 +264,9 @@ The `max_keys` value must be set explicitly in configuration. There is no implic
 
 `ttl` defines the maximum age (in seconds) of an inactive key before cleanup removes it, regardless of whether the window has expired.
 
-`ttl` must be >= `window`. If `ttl` < `window`, startup must fail with an explicit validation error.
+`ttl` MUST be ≥ 2 × `window`. If `ttl` < 2 × `window`, startup must fail with an explicit validation error.
+
+This ensures that keys are not prematurely removed before a new event can trigger window rollover, which would otherwise cause duplicate "first events" and break aggregation correctness.
 
 ### Overflow Behavior
 
@@ -378,7 +398,7 @@ access_events:
 | `key_fields`            | list    | yes      | Fields that form the aggregation key. Must include all six defined fields.    |
 | `include_counter`       | boolean | yes      | If true, summary events include `count` and `window_sec` fields.              |
 | `limits.max_keys`       | integer | yes      | Maximum number of concurrent aggregation keys. Must be > 0.                  |
-| `limits.ttl`            | integer | yes      | Maximum age of an inactive key in seconds. Must be >= `window`.               |
+| `limits.ttl`            | integer | yes      | Maximum age of an inactive key in seconds. Must be ≥ 2 × `window`.           |
 | `output.type`           | string  | yes      | Output transport. Only `http_stream` is supported.                            |
 | `output.path`           | string  | yes      | HTTP path for the streaming endpoint. Must begin with `/`.                    |
 | `output.listen`         | string  | yes      | TCP bind address for the HTTP server (e.g. `":8080"`). Required when `output.type` is `http_stream`. |
@@ -388,7 +408,7 @@ access_events:
 - `mode` must be `"rate"`. Any other value causes startup failure.
 - `output.type` must be `"http_stream"`. Any other value causes startup failure.
 - `window` must be a positive integer. Zero or negative causes startup failure.
-- `limits.ttl` must be >= `limits.window`. Violation causes startup failure.
+- `limits.ttl` must be ≥ 2 × `limits.window`. Violation causes startup failure.
 - `limits.max_keys` must be > 0. Zero or negative causes startup failure.
 - `key_fields` must contain exactly the six defined fields. Missing or extra fields cause startup failure.
 - `output.path` must begin with `/`. Any other value causes startup failure.
@@ -504,3 +524,12 @@ The access event system must behave deterministically under all inputs.
 ---
 
 **End of Access Event System Design**
+
+---
+
+## Consistency Verification
+
+- Cleanup behavior is strictly non-emitting
+- TTL constraint is ≥ 2 × window
+- Event emission is fully event-driven
+- No background-triggered outputs exist
