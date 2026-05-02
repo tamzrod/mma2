@@ -1,6 +1,8 @@
 // internal/config/config.go
 package config
 
+import "mma2/internal/accessevents"
+
 // Config is the root configuration for MMA2.
 // It describes structure only, not behavior.
 type Config struct {
@@ -10,6 +12,10 @@ type Config struct {
 	// Optional notify output configuration (adapters).
 	// Absence means notify engine has no external adapters configured.
 	Notify *NotifyOutputConfig `yaml:"notify"`
+
+	// Optional access event system configuration.
+	// Absence (or enabled: false) disables the system entirely.
+	AccessEvents *accessevents.AccessEventsConfig `yaml:"access_events"`
 
 	// Debug enables verbose protocol-level logging (e.g. malformed packets).
 	// Defaults to false when the key is absent from the config file.

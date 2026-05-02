@@ -4,10 +4,12 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"mma2/internal/accessevents"
 	"mma2/internal/authority"
 	"mma2/internal/config"
 	"mma2/internal/ingress"
@@ -102,13 +104,44 @@ func main() {
 	}
 
 	// --------------------
+	// Access Events
+	// --------------------
+
+	var ae *accessevents.Engine
+
+	if cfg.AccessEvents != nil && cfg.AccessEvents.Enabled {
+		ae = accessevents.New(cfg.AccessEvents)
+
+		mux := http.NewServeMux()
+		mux.Handle(cfg.AccessEvents.Output.Path, accessevents.NewHandler(ae))
+
+		// Bind the listener before starting the goroutine so that bind errors
+		// cause a clean startup failure rather than a silent background crash.
+		ln, err := net.Listen("tcp", cfg.AccessEvents.Output.Listen)
+		if err != nil {
+			log.Fatalf("access events: failed to bind %s: %v", cfg.AccessEvents.Output.Listen, err)
+		}
+
+		go func() {
+			log.Printf("access events HTTP listening on %s", cfg.AccessEvents.Output.Listen)
+			if err := http.Serve(ln, mux); err != nil {
+				log.Fatalf("access events HTTP server failed: %v", err)
+			}
+		}()
+
+		log.Println("access events engine started")
+	} else {
+		log.Println("access events disabled")
+	}
+
+	// --------------------
 	// Start ingress
 	// --------------------
 
 	for _, gate := range cfg.Ingress {
 
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConn(conn, store, auth, notifier, cfg.Debug)
+			modbus.HandleConn(conn, store, auth, notifier, ae, cfg.Debug)
 		}
 
 		onRawIngest := func(conn net.Conn) {
