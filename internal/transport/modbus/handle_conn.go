@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 
+	"mma2/internal/accessevents"
 	"mma2/internal/authority"
 	"mma2/internal/memorycore"
 	"mma2/internal/notify"
@@ -18,7 +19,8 @@ func HandleConn(
 	conn net.Conn,
 	store *memorycore.Store,
 	auth *authority.Authority,
-	notifier *notify.Engine, // OPTIONAL
+	notifier *notify.Engine,     // OPTIONAL
+	ae *accessevents.Engine,     // OPTIONAL
 	debug bool,
 ) {
 	defer conn.Close()
@@ -93,10 +95,17 @@ func HandleConn(
 		})
 
 		if !decision.Allowed {
+			if ae != nil {
+				ae.Record(srcIPStr, req.Port, req.UnitID, req.FunctionCode, false)
+			}
 			pdu := BuildExceptionPDU(req.FunctionCode, decision.ExceptionCode)
 			frame := BuildResponse(req, pdu)
 			_, _ = conn.Write(frame)
 			continue
+		}
+
+		if ae != nil {
+			ae.Record(srcIPStr, req.Port, req.UnitID, req.FunctionCode, true)
 		}
 
 		// --------------------

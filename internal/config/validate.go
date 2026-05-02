@@ -29,6 +29,11 @@ func Validate(cfg *Config) error {
 		return err
 	}
 
+	// Validate access events configuration if present and enabled.
+	if err := validateAccessEvents(cfg); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -332,4 +337,88 @@ func parseIPOrCIDR(s string) (any, error) {
 		return addr, nil
 	}
 	return nil, fmt.Errorf("not an ip or cidr")
+}
+
+// --------------------
+// Access Events validation
+// --------------------
+
+// requiredKeyFields is the exact set of fields that must appear in key_fields.
+var requiredKeyFields = map[string]struct{}{
+	"src_ip":        {},
+	"function_code": {},
+	"action":        {},
+	"status":        {},
+	"port":          {},
+	"unit":          {},
+}
+
+// validateAccessEvents validates the access_events block when present and enabled.
+// If absent or disabled, validation is skipped entirely.
+func validateAccessEvents(cfg *Config) error {
+	ae := cfg.AccessEvents
+	if ae == nil || !ae.Enabled {
+		return nil
+	}
+
+	if ae.Mode != "rate" {
+		return fmt.Errorf("access_events.mode must be \"rate\", got %q", ae.Mode)
+	}
+
+	if ae.Window <= 0 {
+		return fmt.Errorf("access_events.window must be > 0, got %d", ae.Window)
+	}
+
+	if err := validateKeyFields(ae.KeyFields); err != nil {
+		return err
+	}
+
+	if ae.Limits.MaxKeys <= 0 {
+		return fmt.Errorf("access_events.limits.max_keys must be > 0, got %d", ae.Limits.MaxKeys)
+	}
+
+	if ae.Limits.TTL < ae.Window {
+		return fmt.Errorf(
+			"access_events.limits.ttl (%d) must be >= window (%d)",
+			ae.Limits.TTL, ae.Window,
+		)
+	}
+
+	if ae.Output.Type != "http_stream" {
+		return fmt.Errorf("access_events.output.type must be \"http_stream\", got %q", ae.Output.Type)
+	}
+
+	if !strings.HasPrefix(ae.Output.Path, "/") {
+		return fmt.Errorf("access_events.output.path must begin with \"/\", got %q", ae.Output.Path)
+	}
+
+	if ae.Output.Listen == "" {
+		return fmt.Errorf("access_events.output.listen is required when output.type is \"http_stream\"")
+	}
+
+	return nil
+}
+
+// validateKeyFields checks that key_fields contains exactly the six required
+// field names, with no missing fields and no extras or duplicates.
+func validateKeyFields(fields []string) error {
+	if len(fields) != len(requiredKeyFields) {
+		return fmt.Errorf(
+			"access_events.key_fields must contain exactly %d fields, got %d",
+			len(requiredKeyFields), len(fields),
+		)
+	}
+
+	seen := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		if _, ok := requiredKeyFields[f]; !ok {
+			return fmt.Errorf("access_events.key_fields: unknown field %q", f)
+		}
+		if _, dup := seen[f]; dup {
+			return fmt.Errorf("access_events.key_fields: duplicate field %q", f)
+		}
+		seen[f] = struct{}{}
+	}
+
+	return nil
 }

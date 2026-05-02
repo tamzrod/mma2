@@ -367,9 +367,8 @@ access_events:
   output:
     type: http_stream
     path: /events
+    listen: ":8080"
 ```
-
-### Field Definitions
 
 | Field                   | Type    | Required | Description                                                                   |
 |-------------------------|---------|----------|-------------------------------------------------------------------------------|
@@ -382,6 +381,7 @@ access_events:
 | `limits.ttl`            | integer | yes      | Maximum age of an inactive key in seconds. Must be >= `window`.               |
 | `output.type`           | string  | yes      | Output transport. Only `http_stream` is supported.                            |
 | `output.path`           | string  | yes      | HTTP path for the streaming endpoint. Must begin with `/`.                    |
+| `output.listen`         | string  | yes      | TCP bind address for the HTTP server (e.g. `":8080"`). Required when `output.type` is `http_stream`. |
 
 ### Validation Rules
 
@@ -391,6 +391,8 @@ access_events:
 - `limits.ttl` must be >= `limits.window`. Violation causes startup failure.
 - `limits.max_keys` must be > 0. Zero or negative causes startup failure.
 - `key_fields` must contain exactly the six defined fields. Missing or extra fields cause startup failure.
+- `output.path` must begin with `/`. Any other value causes startup failure.
+- `output.listen` must not be empty when `output.type` is `http_stream`. Empty value causes startup failure.
 - If `enabled` is `false`, all other fields are ignored. No listener is started. No map is allocated.
 
 ### Minimal Config Example
@@ -414,6 +416,7 @@ access_events:
   output:
     type: http_stream
     path: /events
+    listen: ":8080"
 ```
 
 ### Full Config Example
@@ -437,6 +440,7 @@ access_events:
   output:
     type: http_stream
     path: /events
+    listen: ":8080"
 ```
 
 Note: The minimal and full config examples differ only in `max_keys` and `ttl`. These values must be tuned by the operator based on the number of distinct clients, function codes, and expected request rates.
