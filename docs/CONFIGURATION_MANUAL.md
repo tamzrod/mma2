@@ -727,7 +727,7 @@ access_events:
 | `key_fields` | list | yes | Defines the aggregation key. Must contain exactly the six fields listed below — no more, no fewer, no duplicates. |
 | `include_counter` | boolean | yes | When `true`, summary events include `count` and `window_sec` fields. When `false`, these fields are omitted from all events. |
 | `limits.max_keys` | integer | yes | Maximum number of concurrent aggregation keys. Must be `> 0`. When this limit is reached, new keys are dropped. |
-| `limits.ttl` | integer | yes | Maximum age (in seconds) of an inactive aggregation key before cleanup removes it. Must be `>= window`. |
+| `limits.ttl` | integer | yes | Maximum age (in seconds) of an inactive aggregation key before cleanup removes it. Must be `>= 2 × window`. |
 | `output.type` | string | yes | Output transport. Only `"http_stream"` is supported. Any other value causes startup failure. |
 | `output.path` | string | yes | HTTP path for the streaming endpoint. Must begin with `"/"`. |
 | `output.listen` | string | yes | TCP bind address for the HTTP server (e.g. `":9090"`). Required when `output.type` is `"http_stream"`. |
@@ -758,7 +758,7 @@ All rules apply only when `enabled: true`. When `enabled: false`, no validation 
 - `window` must be `> 0`. Zero or negative → startup failure.
 - `key_fields` must contain exactly the six defined fields with no extras and no duplicates → startup failure if violated.
 - `limits.max_keys` must be `> 0`. Zero or negative → startup failure.
-- `limits.ttl` must be `>= window`. Violation → startup failure.
+- `limits.ttl` must be `>= 2 × window`. Violation → startup failure.
 - `output.type` must be `"http_stream"`. Any other value → startup failure.
 - `output.path` must begin with `"/"`. Any other value → startup failure.
 - `output.listen` must not be empty. Empty value → startup failure.
@@ -845,9 +845,7 @@ Events within an active window are silently discarded. Only the first event in e
 
 #### TTL Cleanup
 
-A background cleanup goroutine runs at an interval of `window × 2` seconds. It removes aggregation keys whose `window_start` age exceeds `ttl`.
-
-During cleanup, if a removed key has `suppressed_count > 0`, a summary event is emitted for it. Keys with `suppressed_count == 0` are removed silently.
+A background cleanup goroutine runs at an interval of `window × 2` seconds. It removes aggregation keys whose `window_start` age exceeds `ttl`. Cleanup is a memory hygiene mechanism only — it never emits events. Suppressed counts for expired keys are discarded silently.
 
 The cleanup goroutine recovers from panics and restarts itself automatically.
 
@@ -856,11 +854,11 @@ The cleanup goroutine recovers from panics and restarts itself automatically.
 ### Critical Constraints
 
 ```
-- limits.ttl must be >= window (enforced at startup)
+- limits.ttl must be >= 2 × window (enforced at startup)
 - limits.max_keys overflow: new keys are dropped, existing keys are unaffected
 - event emission is non-blocking: broadcast channel capacity is 1024 events; per-client channel capacity is 64 events; full channels result in silent drops
 - system is best-effort: drops are allowed and expected under load
-- cleanup emits summary events for expired keys with non-zero suppressed counts
+- cleanup does NOT emit events; suppressed counts for expired keys are discarded silently
 - unknown function codes (not in FC 1,2,3,4,5,6,15,16) are silently ignored; no event is emitted
 - output.listen bind failure causes immediate startup failure (not a silent background crash)
 ```
@@ -941,7 +939,7 @@ Before starting MMA with access events enabled:
 - [ ] `window` is a positive integer
 - [ ] `key_fields` contains exactly the six required fields, no duplicates
 - [ ] `limits.max_keys` is a positive integer
-- [ ] `limits.ttl` >= `window`
+- [ ] `limits.ttl` >= `2 × window`
 - [ ] `output.type` is `"http_stream"`
 - [ ] `output.path` begins with `"/"`
 - [ ] `output.listen` is not empty
@@ -960,9 +958,9 @@ Only `mode: rate` is supported.
 
 The `key_fields` list must contain exactly: `src_ip`, `function_code`, `action`, `status`, `port`, `unit`.
 
-**Error: `access_events.limits.ttl (N) must be >= window (M)`**
+**Error: `access_events.limits.ttl must be at least 2x window`**
 
-Increase `ttl` so that it is at least equal to `window`.
+Increase `ttl` so that it is at least twice the value of `window`.
 
 **Error: `access events: failed to bind :9090`**
 

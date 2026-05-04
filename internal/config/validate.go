@@ -377,9 +377,9 @@ func validateAccessEvents(cfg *Config) error {
 		return fmt.Errorf("access_events.limits.max_keys must be > 0, got %d", ae.Limits.MaxKeys)
 	}
 
-	if ae.Limits.TTL < ae.Window {
+	if ae.Limits.TTL < ae.Window*2 {
 		return fmt.Errorf(
-			"access_events.limits.ttl (%d) must be >= window (%d)",
+			"access_events.limits.ttl must be at least 2x window: ttl=%d window=%d",
 			ae.Limits.TTL, ae.Window,
 		)
 	}
