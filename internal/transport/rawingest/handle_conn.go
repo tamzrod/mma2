@@ -2,6 +2,7 @@
 package rawingest
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -13,8 +14,16 @@ import (
 
 // HandleConn handles a single Raw Ingest TCP connection.
 // It writes exactly 1 byte per packet:
-//   0 = OK
-//   1 = REJECTED
+//
+//	0x00 = OK
+//	0x10 = INVALID_MAGIC
+//	0x11 = INVALID_VERSION
+//	0x12 = INVALID_AREA
+//	0x13 = INVALID_COUNT
+//	0x14 = INVALID_LENGTH
+//	0x20 = MEMORY_NOT_FOUND
+//	0x21 = OUT_OF_BOUNDS
+//	0x30 = INTERNAL_ERROR
 //
 // Notification is optional.
 // It is emitted ONLY after successful write commit.
@@ -38,9 +47,10 @@ func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine)
 	for {
 		pkt, err := DecodeOne(conn, port)
 		if err != nil {
-			if err != io.EOF {
-				_, _ = conn.Write([]byte{RespRejected})
+			if err == io.EOF {
+				return
 			}
+			_, _ = conn.Write([]byte{decodeErrCode(err)})
 			return
 		}
 
@@ -51,23 +61,23 @@ func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine)
 
 		mem, err := store.MustGet(memID)
 		if err != nil {
-			_, _ = conn.Write([]byte{RespRejected})
-			continue
+			_, _ = conn.Write([]byte{RespMemoryNotFound})
+			return
 		}
 
 		if pkt.Area.IsBitArea() {
 			if err := mem.WriteBits(pkt.Area, pkt.Address, pkt.Count, pkt.Payload); err != nil {
-				_, _ = conn.Write([]byte{RespRejected})
-				continue
+				_, _ = conn.Write([]byte{writeErrCode(err)})
+				return
 			}
 		} else if pkt.Area.IsRegArea() {
 			if err := mem.WriteRegs(pkt.Area, pkt.Address, pkt.Count, pkt.Payload); err != nil {
-				_, _ = conn.Write([]byte{RespRejected})
-				continue
+				_, _ = conn.Write([]byte{writeErrCode(err)})
+				return
 			}
 		} else {
-			_, _ = conn.Write([]byte{RespRejected})
-			continue
+			_, _ = conn.Write([]byte{RespInternalError})
+			return
 		}
 
 		// Successful write → optional notify
@@ -88,6 +98,33 @@ func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine)
 		}
 
 		_, _ = conn.Write([]byte{RespOK})
+	}
+}
+
+func decodeErrCode(err error) byte {
+	switch {
+	case errors.Is(err, ErrInvalidMagic):
+		return RespInvalidMagic
+	case errors.Is(err, ErrInvalidVersion):
+		return RespInvalidVersion
+	case errors.Is(err, ErrInvalidArea):
+		return RespInvalidArea
+	case errors.Is(err, ErrInvalidCount):
+		return RespInvalidCount
+	case errors.Is(err, ErrInvalidLength):
+		return RespInvalidLength
+	default:
+		return RespInternalError
+	}
+}
+
+func writeErrCode(err error) byte {
+	switch {
+	case errors.Is(err, memorycore.ErrOutOfBounds),
+		errors.Is(err, memorycore.ErrStartOverflow):
+		return RespOutOfBounds
+	default:
+		return RespInternalError
 	}
 }
 

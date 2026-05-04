@@ -3,17 +3,25 @@ package rawingest
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"io"
 
 	"mma2/internal/memorycore"
+)
+
+var (
+	ErrInvalidMagic   = errors.New("bad magic")
+	ErrInvalidVersion = errors.New("bad version")
+	ErrInvalidArea    = errors.New("invalid area")
+	ErrInvalidCount   = errors.New("count is zero")
+	ErrInvalidLength  = errors.New("invalid payload length")
 )
 
 const headerLen = 10 // Magic(2) Ver(1) Area(1) UnitID(2) Address(2) Count(2)
 
 func payloadLen(area memorycore.Area, count uint16) (int, error) {
 	if count == 0 {
-		return 0, fmt.Errorf("count is zero")
+		return 0, ErrInvalidCount
 	}
 	if area.IsBitArea() {
 		return int((count + 7) / 8), nil
@@ -21,7 +29,7 @@ func payloadLen(area memorycore.Area, count uint16) (int, error) {
 	if area.IsRegArea() {
 		return int(count) * 2, nil
 	}
-	return 0, fmt.Errorf("invalid area")
+	return 0, ErrInvalidArea
 }
 
 // DecodeOne reads exactly one raw-ingest packet.
@@ -32,10 +40,10 @@ func DecodeOne(r io.Reader, port uint16) (*Packet, error) {
 	}
 
 	if hdr[0] != Magic0 || hdr[1] != Magic1 {
-		return nil, fmt.Errorf("bad magic")
+		return nil, ErrInvalidMagic
 	}
 	if hdr[2] != Version1 {
-		return nil, fmt.Errorf("bad version")
+		return nil, ErrInvalidVersion
 	}
 
 	area := memorycore.Area(hdr[3])
@@ -50,7 +58,7 @@ func DecodeOne(r io.Reader, port uint16) (*Packet, error) {
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return nil, err
+		return nil, ErrInvalidLength
 	}
 
 	return &Packet{

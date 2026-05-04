@@ -24,6 +24,16 @@ const (
 
 	Version1 = byte(0x01)
 
-	RespOK       = byte(0)
-	RespRejected = byte(1)
+	RespOK = byte(0x00)
+
+	RespInvalidMagic   = byte(0x10)
+	RespInvalidVersion = byte(0x11)
+	RespInvalidArea    = byte(0x12)
+	RespInvalidCount   = byte(0x13)
+	RespInvalidLength  = byte(0x14)
+
+	RespMemoryNotFound = byte(0x20)
+	RespOutOfBounds    = byte(0x21)
+
+	RespInternalError = byte(0x30)
 )
