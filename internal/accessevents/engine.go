@@ -158,30 +158,20 @@ func (e *Engine) runCleanupLoop() {
 }
 
 // runCleanup iterates the state map and removes keys whose TTL has elapsed.
-// Summary events are emitted for any removed key with a non-zero suppressed count.
-// This function never emits events for keys that have zero suppressed count.
+// It is a memory hygiene mechanism only: it never emits events, flushes
+// counters, or writes to any output channel. Suppressed counts for expired
+// keys are discarded silently.
 func (e *Engine) runCleanup() {
 	now := time.Now().UnixNano()
 	ttlNanos := int64(e.cfg.Limits.TTL) * int64(time.Second)
 
 	e.mu.Lock()
-	var toEmit []Event
 	for k, s := range e.state {
 		if now >= s.windowStart+ttlNanos {
-			if s.suppressedCount > 0 {
-				toEmit = append(toEmit, e.buildSummary(k, s, now))
-			}
 			delete(e.state, k)
 		}
 	}
 	e.mu.Unlock()
-
-	for _, evt := range toEmit {
-		select {
-		case e.broadcast <- evt:
-		default:
-		}
-	}
 }
 
 // buildEvent creates an individual (non-summary) event for a key.

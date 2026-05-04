@@ -19,8 +19,9 @@ For the formal configuration contract and validation rules, see [04_CONFIGURATIO
 7. [Access Control (Policy)](#access-control-policy)
 8. [Notification Configuration](#notification-configuration)
 9. [Debug Logging](#debug-logging)
-10. [Common Use Cases](#common-use-cases)
-11. [Validation and Troubleshooting](#validation-and-troubleshooting)
+10. [Access Events Configuration](#access-events-configuration)
+11. [Common Use Cases](#common-use-cases)
+12. [Validation and Troubleshooting](#validation-and-troubleshooting)
 
 ---
 
@@ -671,6 +672,302 @@ listeners:
 
 ---
 
+## Access Events Configuration
+
+### Overview
+
+The Access Events system is a **passive observer** of access control decisions made by MMA 2.0. It emits a live stream of access events — one per Modbus request that passes through the access control layer — as NDJSON over HTTP.
+
+Key properties:
+
+- **Observer-only**: It observes decisions; it does not influence them. No Modbus response is altered, delayed, or rejected based on event state.
+- **Non-blocking**: Event emission never delays the Modbus response path. When the system is at capacity, events are dropped silently.
+- **No persistence**: Events are not stored. There is no replay mechanism or audit history. If no consumer is connected, events are discarded.
+- **Best-effort delivery**: Slow consumers, full channel buffers, and key map overflow all result in silent drops. The Modbus operation continues normally regardless.
+
+The system is entirely separate from the Notification Engine. These two systems share no code, no state, and no configuration path.
+
+---
+
+### YAML Structure
+
+Access events are configured under the top-level `access_events` key:
+
+```yaml
+access_events:
+  enabled: true
+  mode: rate
+  window: 5
+  key_fields:
+    - src_ip
+    - function_code
+    - action
+    - status
+    - port
+    - unit
+  include_counter: true
+  limits:
+    max_keys: 1000
+    ttl: 30
+  output:
+    type: http_stream
+    path: /events
+    listen: ":9090"
+```
+
+---
+
+### Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | boolean | yes | Enables or disables the entire access event system. When `false`, no listener is started, no map is allocated, and all other fields are ignored. |
+| `mode` | string | yes | Aggregation mode. Only `"rate"` is supported. Any other value causes startup failure. |
+| `window` | integer | yes | Aggregation window duration in seconds. Must be `> 0`. |
+| `key_fields` | list | yes | Defines the aggregation key. Must contain exactly the six fields listed below — no more, no fewer, no duplicates. |
+| `include_counter` | boolean | yes | When `true`, summary events include `count` and `window_sec` fields. When `false`, these fields are omitted from all events. |
+| `limits.max_keys` | integer | yes | Maximum number of concurrent aggregation keys. Must be `> 0`. When this limit is reached, new keys are dropped. |
+| `limits.ttl` | integer | yes | Maximum age (in seconds) of an inactive aggregation key before cleanup removes it. Must be `>= 2 × window`. |
+| `output.type` | string | yes | Output transport. Only `"http_stream"` is supported. Any other value causes startup failure. |
+| `output.path` | string | yes | HTTP path for the streaming endpoint. Must begin with `"/"`. |
+| `output.listen` | string | yes | TCP bind address for the HTTP server (e.g. `":9090"`). Required when `output.type` is `"http_stream"`. |
+
+#### `key_fields` — Required Values
+
+The `key_fields` list must contain **exactly** these six values (order does not matter):
+
+```yaml
+key_fields:
+  - src_ip
+  - function_code
+  - action
+  - status
+  - port
+  - unit
+```
+
+Any missing, extra, or duplicate field causes startup failure.
+
+---
+
+### Validation Rules
+
+All rules apply only when `enabled: true`. When `enabled: false`, no validation is performed on other fields.
+
+- `mode` must be `"rate"`. Any other value → startup failure.
+- `window` must be `> 0`. Zero or negative → startup failure.
+- `key_fields` must contain exactly the six defined fields with no extras and no duplicates → startup failure if violated.
+- `limits.max_keys` must be `> 0`. Zero or negative → startup failure.
+- `limits.ttl` must be `>= 2 × window`. Violation → startup failure.
+- `output.type` must be `"http_stream"`. Any other value → startup failure.
+- `output.path` must begin with `"/"`. Any other value → startup failure.
+- `output.listen` must not be empty. Empty value → startup failure.
+
+---
+
+### Event Format
+
+Events are emitted as **NDJSON** (Newline-Delimited JSON): one JSON object per line, UTF-8 encoded, no outer array wrapper. Each line is self-contained.
+
+**Individual event** (first occurrence of a key in a window):
+
+```json
+{"ts":1700000000000000000,"port":502,"unit":1,"function_code":3,"action":"read","status":"allowed","src_ip":"192.168.1.10"}
+```
+
+**Summary event** (emitted when a window expires and `include_counter: true`):
+
+```json
+{"ts":1700000005000000000,"port":502,"unit":1,"function_code":3,"action":"read","status":"allowed","src_ip":"192.168.1.10","count":47,"window_sec":5}
+```
+
+#### Event Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `ts` | integer | yes | Unix timestamp in nanoseconds (host OS wall clock). |
+| `port` | integer | yes | Listener port on which the request arrived. |
+| `unit` | integer | yes | Modbus Unit ID targeted by the request. |
+| `function_code` | integer | yes | Modbus function code (e.g. 3, 16). |
+| `action` | string | yes | `"read"` (FC 1, 2, 3, 4) or `"write"` (FC 5, 6, 15, 16). Unknown function codes are silently ignored. |
+| `status` | string | yes | `"allowed"` or `"denied"` — the access control decision. |
+| `src_ip` | string | yes | Source IP address of the client (no port). |
+| `count` | integer | no | Number of events suppressed within the closed window. Absent on individual events. Only present when `include_counter: true`. |
+| `window_sec` | integer | no | Duration in seconds of the window that produced this summary. Only present when `include_counter: true`. |
+
+---
+
+### Behavioral Rules
+
+#### Aggregation Key
+
+Each unique combination of the following six fields defines one independent aggregation bucket:
+
+```
+key = (src_ip, function_code, action, status, port, unit)
+```
+
+Events sharing the same key within the same window are aggregated. Events with different keys are independent.
+
+#### Rate Aggregation Algorithm
+
+**Step 1 — First event (no active window for this key):**
+
+1. If the key map is at `max_keys`, drop the event silently. Do not create a new entry.
+2. Otherwise, emit the event immediately (no `count` or `window_sec` fields).
+3. Open a new window for this key, recording `window_start` = current timestamp and `suppressed_count = 0`.
+
+**Step 2 — Subsequent event within an active window (`now < window_start + window`):**
+
+1. Do NOT emit an event.
+2. Increment `suppressed_count` by 1.
+
+**Step 3 — Event arrives after window expiry (`now >= window_start + window`):**
+
+1. If `suppressed_count > 0`: emit a summary event **first** (with `count` and `window_sec` when `include_counter: true`).
+2. Emit the current (triggering) event **second**, with no `count` or `window_sec`.
+3. Open a new window for this key.
+
+Window expiry is evaluated lazily — only when a new event arrives for that key. There are no background timers that trigger event emission.
+
+#### Emission Order (Step 3)
+
+When a window expires on a new event and there were suppressed events:
+
+1. Summary event (for the closed window) — emitted first
+2. Current event (the event that triggered expiry) — emitted second
+
+#### Suppression Logic
+
+Events within an active window are silently discarded. Only the first event in each window is emitted immediately. The count of suppressed events is carried in the summary emitted at window expiry (if `include_counter: true`).
+
+`count` represents only the number of suppressed events within the closed window. It does **not** include the event that triggered window expiry detection.
+
+#### TTL Cleanup
+
+A background cleanup goroutine runs at an interval of `window × 2` seconds. It removes aggregation keys whose `window_start` age exceeds `ttl`. Cleanup is a memory hygiene mechanism only — it never emits events. Suppressed counts for expired keys are discarded silently.
+
+The cleanup goroutine recovers from panics and restarts itself automatically.
+
+---
+
+### Critical Constraints
+
+```
+- limits.ttl must be >= 2 × window (enforced at startup)
+- limits.max_keys overflow: new keys are dropped, existing keys are unaffected
+- event emission is non-blocking: broadcast channel capacity is 1024 events; per-client channel capacity is 64 events; full channels result in silent drops
+- system is best-effort: drops are allowed and expected under load
+- cleanup does NOT emit events; suppressed counts for expired keys are discarded silently
+- unknown function codes (not in FC 1,2,3,4,5,6,15,16) are silently ignored; no event is emitted
+- output.listen bind failure causes immediate startup failure (not a silent background crash)
+```
+
+---
+
+### HTTP Streaming Transport
+
+The access events HTTP server is started on `output.listen` at `output.path`. It accepts `GET` requests only.
+
+- Response begins immediately with `HTTP 200 OK`.
+- `Content-Type: application/x-ndjson`
+- Connection is held open indefinitely; events are written as they are produced.
+- Multiple simultaneous clients are supported; each receives events independently.
+- Slow clients have events dropped rather than back-pressuring the engine.
+- Normal client disconnect is silent (no error logged).
+
+---
+
+### Example Use Case
+
+**Scenario**: Monitor all access control decisions on a Modbus server, suppressing high-frequency repeated accesses to one event per 5-second window per unique source/target combination.
+
+```yaml
+listeners:
+  - id: "main"
+    listen: "0.0.0.0:502"
+    memory:
+      - unit_id: 1
+        holding_registers:
+          start: 0
+          count: 1000
+        policy:
+          rules:
+            - id: "allow_controllers"
+              source_ip:
+                - "192.168.1.0/24"
+              allow_fc: [1, 3, 5, 6]
+            - id: "deny_default"
+              source_ip:
+                - "0.0.0.0/0"
+              allow_fc: []
+
+access_events:
+  enabled: true
+  mode: rate
+  window: 5
+  key_fields:
+    - src_ip
+    - function_code
+    - action
+    - status
+    - port
+    - unit
+  include_counter: true
+  limits:
+    max_keys: 1000
+    ttl: 30
+  output:
+    type: http_stream
+    path: /events
+    listen: ":9090"
+```
+
+Connect a consumer:
+
+```bash
+curl http://localhost:9090/events
+```
+
+---
+
+### Validation Checklist (Access Events)
+
+Before starting MMA with access events enabled:
+
+- [ ] `mode` is `"rate"`
+- [ ] `window` is a positive integer
+- [ ] `key_fields` contains exactly the six required fields, no duplicates
+- [ ] `limits.max_keys` is a positive integer
+- [ ] `limits.ttl` >= `2 × window`
+- [ ] `output.type` is `"http_stream"`
+- [ ] `output.path` begins with `"/"`
+- [ ] `output.listen` is not empty
+
+### Common Errors (Access Events)
+
+**Error: `access_events.mode must be "rate"`**
+
+Only `mode: rate` is supported.
+
+**Error: `access_events.window must be > 0`**
+
+`window: 0` or a negative value is not allowed.
+
+**Error: `access_events.key_fields must contain exactly 6 fields`**
+
+The `key_fields` list must contain exactly: `src_ip`, `function_code`, `action`, `status`, `port`, `unit`.
+
+**Error: `access_events.limits.ttl must be at least 2x window`**
+
+Increase `ttl` so that it is at least twice the value of `window`.
+
+**Error: `access events: failed to bind :9090`**
+
+The bind address is already in use or the process lacks permission to bind the port.
+
+---
+
 ## Common Use Cases
 
 ### Use Case 1: Simple Modbus Slave Device
@@ -1112,6 +1409,7 @@ notify:
 - **State Sealing Details**: [01_STATE_SEALING.md](01_STATE_SEALING.md)
 - **Authority Model**: [03_AUTHORITY_MODEL.md](03_AUTHORITY_MODEL.md)
 - **Architecture Overview**: [02_ARCHITECTURE.md](02_ARCHITECTURE.md)
+- **Access Events Design**: [access_events.md](access_events.md)
 - **Example Configuration**: [example.yaml](example.yaml)
 
 ---
