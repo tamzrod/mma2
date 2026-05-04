@@ -58,7 +58,10 @@ func DecodeOne(r io.Reader, port uint16) (*Packet, error) {
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return nil, ErrInvalidLength
+		if err == io.ErrUnexpectedEOF {
+			return nil, ErrInvalidLength
+		}
+		return nil, err
 	}
 
 	return &Packet{
