@@ -96,7 +96,7 @@ mkdir -p "${EVIDENCE_DIR}"
 # ---------------------------------------------------------------------------
 # Step 3 — Start mma2
 # ---------------------------------------------------------------------------
-banner "Step 2 — Start mma2"
+banner "Step 3 — Start mma2"
 "${BINARY}" "${CONFIG}" > "${MMA2_LOG}" 2>&1 &
 MMA2_PID=$!
 echo "    mma2 PID: ${MMA2_PID}"
@@ -107,7 +107,7 @@ wait_for_port "${HTTP_PORT}"
 # ---------------------------------------------------------------------------
 # Step 4 — Attach /events stream in background
 # ---------------------------------------------------------------------------
-banner "Step 3 — Connect to /events (background capture)"
+banner "Step 4 — Connect to /events (background capture)"
 curl -sSN "http://127.0.0.1:${HTTP_PORT}/events" >> "${EVENTS_FILE}" &
 EVENTS_PID=$!
 echo "    curl PID: ${EVENTS_PID}   output: ${EVENTS_FILE}"
@@ -116,20 +116,20 @@ sleep 0.5   # let the subscription register
 # ---------------------------------------------------------------------------
 # Step 5 — Generate traffic
 # ---------------------------------------------------------------------------
-banner "Step 4 — Generate traffic (traffic_gen.py)"
+banner "Step 5 — Generate traffic (traffic_gen.py)"
 python3 "${SCRIPT_DIR}/traffic_gen.py" 127.0.0.1 "${MODBUS_PORT}" 2>&1 | tee "${EVIDENCE_DIR}/traffic_gen.log"
 
 # ---------------------------------------------------------------------------
 # Step 6 — Wait for window expiry so summaries appear
 # ---------------------------------------------------------------------------
-banner "Step 5 — Wait 7 s for 5 s aggregation window to expire"
+banner "Step 6 — Wait 7 s for 5 s aggregation window to expire"
 sleep 7
 echo "    Done waiting."
 
 # ---------------------------------------------------------------------------
 # Step 7 — Show captured events
 # ---------------------------------------------------------------------------
-banner "Step 6 — Captured /events output (evidence/events.ndjson)"
+banner "Step 7 — Captured /events output (evidence/events.ndjson)"
 echo "--------------------------------------------------------------------"
 cat "${EVENTS_FILE}" | python3 -c "
 import sys, json
@@ -145,7 +145,7 @@ echo "Total events captured: $(wc -l < "${EVENTS_FILE}")"
 # ---------------------------------------------------------------------------
 # Step 8 — Validate
 # ---------------------------------------------------------------------------
-banner "Step 7 — Validation"
+banner "Step 8 — Validation"
 python3 - "${EVENTS_FILE}" <<'PYEOF'
 import json, sys
 

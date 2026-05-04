@@ -12,6 +12,8 @@
 
 listeners:
   - id: modbus-primary
+    # Port 5020 is used for local development (avoids needing root for port 502).
+    # When running via docker-compose the container maps host:502 → container:5020.
     listen: ":5020"
 
     memory:
