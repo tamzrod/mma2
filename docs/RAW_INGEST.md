@@ -61,7 +61,7 @@ After processing a packet, the server sends exactly **1 byte** indicating the ou
 Response codes are grouped by failure category:
 
 - **0x10–0x14** — Decoder errors: the packet header or payload did not conform to the protocol.
-- **0x20** — Memory lookup failure: no memory block exists for the given (Port, UnitID) pair.
+- **0x20** — Memory lookup failure: no memory block exists for the given (Port, UnitID) pair. Port is derived from the listening endpoint; UnitID is explicit in the packet.
 - **0x21** — Bounds violation: the requested address range exceeds the configured memory layout.
 - **0x30** — Unexpected failure: an internal condition prevented normal processing.
 
@@ -95,7 +95,7 @@ Raw Ingest performs bounds checking only.
 ## Restrictions
 
 - No protocol-level decode beyond alignment
-- No retries with meaning
+- No automatic retry mechanism
 - No freshness tracking
 - No multi-packet sessions
 
