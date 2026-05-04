@@ -1,0 +1,40 @@
+# ============================================================
+# docker-compose.yml — MMA2 Access Events E2E Test
+#
+# Usage:
+#   docker compose up --build
+#
+# Ports:
+#   502  — Modbus TCP listener
+#   9090 — Access Events HTTP stream  (GET /events)
+# ============================================================
+
+services:
+  mma2:
+    build:
+      context: ../..          # repo root (where Dockerfile lives)
+      dockerfile: Dockerfile
+    image: mma2-e2e:local
+    container_name: mma2-e2e
+    restart: "no"
+
+    # Mount the test config read-only inside the container.
+    volumes:
+      - ./test_config.yaml:/app/test_config.yaml:ro
+
+    # Pass the config path as argument.
+    command: ["/app/mma2", "/app/test_config.yaml"]
+
+    ports:
+      - "502:502"
+      - "9090:9090"
+
+    # Healthcheck: poll the /events endpoint.
+    # MMA2 does not expose a dedicated /health endpoint; we check
+    # that the HTTP server responds (connection accepted + 200 OK).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/events --timeout=2 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s

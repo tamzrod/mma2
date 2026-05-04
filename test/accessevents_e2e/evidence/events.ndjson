@@ -1,0 +1,9 @@
+{"ts":1777859767356136307,"port":5020,"unit":1,"function_code":3,"action":"read","status":"allowed","src_ip":"127.0.0.1"}
+{"ts":1777859768362057058,"port":5020,"unit":1,"function_code":16,"action":"write","status":"denied","src_ip":"127.0.0.1"}
+{"ts":1777859769368050738,"port":5020,"unit":2,"function_code":16,"action":"write","status":"allowed","src_ip":"127.0.0.1"}
+{"ts":1777859776375066853,"port":5020,"unit":1,"function_code":3,"action":"read","status":"allowed","src_ip":"127.0.0.1","count":19,"window_sec":5}
+{"ts":1777859776375066853,"port":5020,"unit":1,"function_code":3,"action":"read","status":"allowed","src_ip":"127.0.0.1"}
+{"ts":1777859776626670727,"port":5020,"unit":1,"function_code":16,"action":"write","status":"denied","src_ip":"127.0.0.1","count":19,"window_sec":5}
+{"ts":1777859776626670727,"port":5020,"unit":1,"function_code":16,"action":"write","status":"denied","src_ip":"127.0.0.1"}
+{"ts":1777859776878142418,"port":5020,"unit":2,"function_code":16,"action":"write","status":"allowed","src_ip":"127.0.0.1","count":19,"window_sec":5}
+{"ts":1777859776878142418,"port":5020,"unit":2,"function_code":16,"action":"write","status":"allowed","src_ip":"127.0.0.1"}

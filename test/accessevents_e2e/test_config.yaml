@@ -1,0 +1,99 @@
+# ============================================================
+# MMA 2.0 — Access Events E2E Test Configuration
+#
+# Scenarios exercised:
+#   A) Allowed reads  — Unit 1, FC3 (read holding regs)  → status: allowed, action: read
+#   B) Denied writes  — Unit 1, FC16 (write multi regs)  → status: denied,  action: write
+#   C) Allowed writes — Unit 2, FC16 (write multi regs)  → status: allowed, action: write
+#
+# The access_events window is 5 s so that within 7–8 s of traffic
+# the summary (count + window_sec) event is visible.
+# ============================================================
+
+listeners:
+  - id: modbus-primary
+    listen: ":5020"
+
+    memory:
+      # -------------------------------------------------------
+      # UNIT 1 — Read-only policy
+      # FC3/FC4 reads are allowed; FC16 writes will be denied.
+      # -------------------------------------------------------
+      - unit_id: 1
+
+        coils:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 64
+
+        input_registers:
+          start: 0
+          count: 64
+
+        policy:
+          rules:
+            - id: allow-reads-only
+              source_ip:
+                - 127.0.0.1
+                - ::1
+              allow_fc: [1, 2, 3, 4]   # reads only — FC16 will be denied
+
+      # -------------------------------------------------------
+      # UNIT 2 — Full access policy
+      # FC16 writes are allowed here, producing "allowed write" events.
+      # -------------------------------------------------------
+      - unit_id: 2
+
+        coils:
+          start: 0
+          count: 64
+
+        holding_registers:
+          start: 0
+          count: 64
+
+        policy:
+          rules:
+            - id: allow-all
+              source_ip:
+                - 127.0.0.1
+                - ::1
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]   # full access
+
+# ============================================================
+# Access Events
+# ============================================================
+access_events:
+  enabled: true
+
+  # rate = suppress repeated identical events within the window;
+  # emit a summary with count after the window expires.
+  mode: rate
+
+  # Aggregation window in seconds.
+  window: 5
+
+  # Exactly these 6 fields are required by the schema.
+  key_fields:
+    - src_ip
+    - function_code
+    - action
+    - status
+    - port
+    - unit
+
+  # Include count + window_sec in summary events.
+  include_counter: true
+
+  limits:
+    max_keys: 1000
+    # ttl must be >= window (5 s); use 30 s so idle keys are reaped eventually.
+    ttl: 30
+
+  output:
+    type: http_stream
+    path: /events
+    listen: ":9090"
