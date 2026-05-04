@@ -1,0 +1,16 @@
+nohup: ignoring input
+2026/05/04 01:55:51 mma2 v2.0.2 starting
+2026/05/04 01:55:51 config path: /home/runner/work/mma2/mma2/test/accessevents_e2e/test_config.yaml
+2026/05/04 01:55:51 [mma2 v2.0.2] loading config: /home/runner/work/mma2/mma2/test/accessevents_e2e/test_config.yaml
+2026/05/04 01:55:51 [mma2 v2.0.2] config file byte length: 2687
+2026/05/04 01:55:51 [mma2 v2.0.2] first 32 bytes: 23203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d
+2026/05/04 01:55:51 [mma2 v2.0.2] last  32 bytes: 74683a202f6576656e74730a202020206c697374656e3a20223a39303930220a
+2026/05/04 01:55:51 [mma2 v2.0.2] UTF-8 valid before normalisation: true
+2026/05/04 01:55:51 [mma2 v2.0.2] UTF-8 valid after normalisation: true
+2026/05/04 01:55:51 config loaded and validated successfully
+2026/05/04 01:55:51 authority policies loaded
+2026/05/04 01:55:51 notify engine enabled (stdout adapter)
+2026/05/04 01:55:51 access events engine started
+2026/05/04 01:55:51 mma2 ingress started
+2026/05/04 01:55:51 ingress modbus-primary listening on :5020
+2026/05/04 01:55:51 access events HTTP listening on :9090

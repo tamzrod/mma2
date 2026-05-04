@@ -1,0 +1,102 @@
+MMA2 Access Events — Traffic Generator
+Target: 127.0.0.1:5020
+Window: 5 s  |  Repeats per scenario: 20
+
+=== Scenario A — Allowed Reads (FC3, Unit 1) ===
+  [connected to 127.0.0.1:5020  unit_id=1]
+  FC3 read  unit=1  iter=01                      → OK
+  FC3 read  unit=1  iter=02                      → OK
+  FC3 read  unit=1  iter=03                      → OK
+  FC3 read  unit=1  iter=04                      → OK
+  FC3 read  unit=1  iter=05                      → OK
+  FC3 read  unit=1  iter=06                      → OK
+  FC3 read  unit=1  iter=07                      → OK
+  FC3 read  unit=1  iter=08                      → OK
+  FC3 read  unit=1  iter=09                      → OK
+  FC3 read  unit=1  iter=10                      → OK
+  FC3 read  unit=1  iter=11                      → OK
+  FC3 read  unit=1  iter=12                      → OK
+  FC3 read  unit=1  iter=13                      → OK
+  FC3 read  unit=1  iter=14                      → OK
+  FC3 read  unit=1  iter=15                      → OK
+  FC3 read  unit=1  iter=16                      → OK
+  FC3 read  unit=1  iter=17                      → OK
+  FC3 read  unit=1  iter=18                      → OK
+  FC3 read  unit=1  iter=19                      → OK
+  FC3 read  unit=1  iter=20                      → OK
+
+=== Scenario B — Denied Writes (FC16, Unit 1) ===
+  [connected to 127.0.0.1:5020  unit_id=1]
+  FC16 write unit=1  iter=01  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=02  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=03  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=04  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=05  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=06  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=07  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=08  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=09  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=10  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=11  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=12  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=13  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=14  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=15  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=16  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=17  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=18  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=19  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=20  (expect DENY)      → EXCEPTION
+
+=== Scenario C — Allowed Writes (FC16, Unit 2) ===
+  [connected to 127.0.0.1:5020  unit_id=2]
+  FC16 write unit=2  iter=01  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=02  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=03  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=04  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=05  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=06  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=07  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=08  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=09  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=10  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=11  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=12  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=13  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=14  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=15  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=16  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=17  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=18  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=19  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=20  (expect ALLOW)     → OK
+
+--- First pass complete. Waiting 6 s for window to expire... ---
+
+--- Second pass (triggers summary events after window expiry) ---
+
+=== Scenario A — Allowed Reads (FC3, Unit 1) ===
+  [connected to 127.0.0.1:5020  unit_id=1]
+  FC3 read  unit=1  iter=01                      → OK
+  FC3 read  unit=1  iter=02                      → OK
+  FC3 read  unit=1  iter=03                      → OK
+  FC3 read  unit=1  iter=04                      → OK
+  FC3 read  unit=1  iter=05                      → OK
+
+=== Scenario B — Denied Writes (FC16, Unit 1) ===
+  [connected to 127.0.0.1:5020  unit_id=1]
+  FC16 write unit=1  iter=01  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=02  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=03  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=04  (expect DENY)      → EXCEPTION
+  FC16 write unit=1  iter=05  (expect DENY)      → EXCEPTION
+
+=== Scenario C — Allowed Writes (FC16, Unit 2) ===
+  [connected to 127.0.0.1:5020  unit_id=2]
+  FC16 write unit=2  iter=01  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=02  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=03  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=04  (expect ALLOW)     → OK
+  FC16 write unit=2  iter=05  (expect ALLOW)     → OK
+
+Traffic generation complete.
