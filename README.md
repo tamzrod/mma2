@@ -122,4 +122,12 @@ Any feature that requires these violates the design.
 
 ---
 
+## Raw Ingest
+
+Raw Ingest now returns structured 1-byte diagnostic response codes for improved observability.
+
+See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table and behavior specification.
+
+---
+
 ## Archi
