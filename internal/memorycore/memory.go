@@ -141,9 +141,10 @@ func (m *Memory) WriteBits(area Area, address uint16, count uint16, src []byte) 
 		return ErrOutOfBounds
 	}
 
+	// Exact length required: oversized buffers are rejected to prevent silent truncation.
 	want := bytesForBits(count)
-	if len(src) < want {
-		return ErrSrcTooSmall
+	if len(src) != want {
+		return ErrSrcInvalidLength
 	}
 
 	off := layout.Offset(address)
@@ -209,9 +210,10 @@ func (m *Memory) WriteRegs(area Area, address uint16, count uint16, src []byte) 
 		return ErrCountZero
 	}
 
+	// Exact length required: oversized buffers are rejected to prevent silent truncation.
 	want := int(count) * 2
-	if len(src) < want {
-		return ErrSrcTooSmall
+	if len(src) != want {
+		return ErrSrcInvalidLength
 	}
 
 	var layout *AreaLayout

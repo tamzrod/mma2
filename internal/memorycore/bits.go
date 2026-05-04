@@ -52,7 +52,7 @@ func writeBits(dst []byte, dstStart uint16, count uint16, src []byte) {
 		srcMask := byte(1 << (i % 8))
 
 		if int(dstByte) >= len(dst) || int(srcByte) >= len(src) {
-			return
+			panic("writeBits: bounds violation")
 		}
 
 		if src[srcByte]&srcMask != 0 {

@@ -21,13 +21,13 @@ const (
 func Classify(conn net.Conn) (Protocol, *bufio.Reader, error) {
 	reader := bufio.NewReader(conn)
 
-	peek, err := reader.Peek(2)
+	peek, err := reader.Peek(3)
 	if err != nil {
 		return ProtocolUnknown, reader, err
 	}
 
-	// Raw Ingest magic: 'R','I'
-	if peek[0] == 'R' && peek[1] == 'I' {
+	// Raw Ingest magic: 'R','I' followed by version 0x01
+	if peek[0] == 'R' && peek[1] == 'I' && peek[2] == 0x01 {
 		return ProtocolRawIngest, reader, nil
 	}
 
