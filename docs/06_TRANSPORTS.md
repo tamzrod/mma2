@@ -95,7 +95,7 @@ Responsibilities:
 - decode frame structure (magic, version, area, unit_id, address, count, payload)
 - resolve target memory by unit_id
 - perform writes atomically
-- reply with single-byte status (0x00 = success, 0x01 = error)
+- reply with a structured 1-byte response code (see RAW_INGEST.md — Response Codes (v1))
 
 Memory areas supported:
 - Coils
@@ -120,7 +120,7 @@ Payload encoding:
 - Register areas (Holding, Input): big-endian uint16 words, 2 bytes each
 
 Response:
-- Single byte: 0x00 (success) or 0x01 (error)
+- Structured 1-byte response code: 0x00 (write committed) or a classified error code. See RAW_INGEST.md.
 
 Restrictions:
 - no protocol-level decode beyond alignment
