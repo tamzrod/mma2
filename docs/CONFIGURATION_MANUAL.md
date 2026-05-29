@@ -20,8 +20,9 @@ For the formal configuration contract and validation rules, see [04_CONFIGURATIO
 8. [Notification Configuration](#notification-configuration)
 9. [Debug Logging](#debug-logging)
 10. [Access Events Configuration](#access-events-configuration)
-11. [Common Use Cases](#common-use-cases)
-12. [Validation and Troubleshooting](#validation-and-troubleshooting)
+11. [Raw Ingest Configuration](#raw-ingest-configuration)
+12. [Common Use Cases](#common-use-cases)
+13. [Validation and Troubleshooting](#validation-and-troubleshooting)
 
 ---
 
@@ -352,6 +353,54 @@ raw_ingest_send --port 502 --unit 1 --area coils --addr 0 --value 1
 
 Another system writes to the sealing flag through its own logic.
 
+### Raw Ingest TCP Packet Example
+
+The following byte sequences show how to lock and unlock the seal using a raw TCP connection to the Raw Ingest listener. Each packet follows the Raw Ingest v1 protocol (see [RAW_INGEST.md](RAW_INGEST.md) for the full format).
+
+Assuming: listener on port 502, unit ID 1, sealing coil at address 0.
+
+**Unlock (unseal — write 1 to coil 0)**
+
+```
+Bytes (hex):  52 49 01 01 00 01 00 00 00 01 01
+              ^^^^^ magic (RI)
+                    ^^ version (0x01)
+                       ^^ area (0x01 = Coils)
+                          ^^^^^ unit ID 1 (big-endian uint16)
+                                ^^^^^ address 0 (big-endian uint16)
+                                      ^^^^^ count 1 (big-endian uint16)
+                                            ^^ payload: coil 0 = 1 (LSB-first)
+```
+
+Send this packet over TCP to port 502. The server responds with `0x00` (OK) and memory becomes unsealed.
+
+**Lock (re-seal flag — write 0 to coil 0)**
+
+```
+Bytes (hex):  52 49 01 01 00 01 00 00 00 01 00
+              ^^^^^ magic (RI)
+                    ^^ version (0x01)
+                       ^^ area (0x01 = Coils)
+                          ^^^^^ unit ID 1 (big-endian uint16)
+                                ^^^^^ address 0 (big-endian uint16)
+                                      ^^^^^ count 1 (big-endian uint16)
+                                            ^^ payload: coil 0 = 0 (LSB-first)
+```
+
+> **Note:** Writing 0 to the sealing coil seals the memory immediately — no restart is required. Seal and unseal are live operations controlled entirely by the flag value.
+
+**Shell example using `printf` and `nc`**
+
+```bash
+# Unlock (unseal): write 1 to coil 0, unit 1, port 502
+printf '\x52\x49\x01\x01\x00\x01\x00\x00\x00\x01\x01' | nc -q1 127.0.0.1 502 | xxd
+
+# Lock (seal flag): write 0 to coil 0, unit 1, port 502
+printf '\x52\x49\x01\x01\x00\x01\x00\x00\x00\x01\x00' | nc -q1 127.0.0.1 502 | xxd
+```
+
+A response of `00` confirms the write was committed.
+
 ### State Sealing Example with Policy
 
 ```yaml
@@ -385,8 +434,9 @@ memory:
 
 - **CRITICAL**: `state_sealing.area` must be set to `"coil"` (singular). This is the ONLY supported value. Any other value will cause startup failure.
 - Sealing flag address must be within the configured coils area
-- Restarting MMA resets memory to sealed state
-- Once unsealed, cannot re-seal without restart
+- Seal and unseal take effect immediately when the flag is written — no restart required
+- Restarting MMA resets memory to sealed state (flag = 0)
+- To enable or disable state sealing entirely, change the configuration and restart
 - Raw Ingest bypasses sealing (by design, for unsealing)
 
 ---
@@ -968,6 +1018,87 @@ The bind address is already in use or the process lacks permission to bind the p
 
 ---
 
+## Raw Ingest Configuration
+
+Raw Ingest is a write-only ingest transport that accepts binary write payloads over TCP and commits them directly to core memory. It bypasses Modbus framing, policy enforcement, and state sealing.
+
+For the full protocol specification and response codes, see [RAW_INGEST.md](RAW_INGEST.md).
+
+### Overview
+
+- **Transport**: TCP (same listener as Modbus TCP)
+- **No separate port required**: Raw Ingest and Modbus TCP share the same listener address
+- **No configuration section**: Raw Ingest is always available on every listener; there is no `raw_ingest:` key
+- **Bypasses policy**: Authority model rules do not apply
+- **Bypasses sealing**: Writes succeed even when memory is sealed (used to unseal)
+- **Write-only**: No read operations are supported
+- **Stateless**: Each connection carries exactly one write; the connection is closed after the response
+
+### Protocol Format (v1)
+
+```
+Field      Size      Description
+─────────────────────────────────────────────────────────────
+Magic      2 bytes   0x52 0x49 ('R' 'I')
+Version    1 byte    0x01
+Area       1 byte    1=Coils, 2=DiscreteInputs, 3=HoldingRegs, 4=InputRegs
+UnitID     2 bytes   Target unit (big-endian uint16)
+Address    2 bytes   Start address (big-endian uint16)
+Count      2 bytes   Number of values (big-endian uint16)
+Payload    variable  Bit-packed (coils/discrete) or uint16 words (registers)
+```
+
+Payload encoding:
+- **Coils / Discrete Inputs**: bits packed LSB-first, padded to the next byte boundary
+- **Holding / Input Registers**: big-endian uint16 words, 2 bytes each
+
+### Response Codes
+
+After processing, the server sends exactly 1 byte:
+
+| Code | Meaning |
+|------|---------|
+| `0x00` | Write committed (OK) |
+| `0x10` | Invalid magic bytes |
+| `0x11` | Unknown version |
+| `0x12` | Unknown area |
+| `0x13` | Count is zero |
+| `0x14` | Payload length mismatch |
+| `0x20` | No memory found for (Port, UnitID) |
+| `0x21` | Address out of bounds |
+| `0x30` | Internal error |
+
+Any non-zero code means **no write occurred**.
+
+### Writing a Holding Register
+
+Write value `1234` (0x04D2) to holding register 10 on unit 2, port 502:
+
+```
+Bytes (hex):  52 49 01 03 00 02 00 0A 00 01 04 D2
+              ^^^^^ magic
+                    ^^ version
+                       ^^ area (0x03 = HoldingRegs)
+                          ^^^^^ unit ID 2
+                                ^^^^^ address 10
+                                      ^^^^^ count 1
+                                            ^^^^^ value 1234 (big-endian uint16)
+```
+
+```bash
+printf '\x52\x49\x01\x03\x00\x02\x00\x0A\x00\x01\x04\xD2' | nc -q1 127.0.0.1 502 | xxd
+```
+
+### Writing Multiple Registers
+
+Write three holding registers starting at address 100, unit 1, values 10/20/30:
+
+```bash
+printf '\x52\x49\x01\x03\x00\x01\x00\x64\x00\x03\x00\x0A\x00\x14\x00\x1E' | nc -q1 127.0.0.1 502 | xxd
+```
+
+---
+
 ## Common Use Cases
 
 ### Use Case 1: Simple Modbus Slave Device
@@ -1407,6 +1538,7 @@ notify:
 
 - **Configuration Contract**: [04_CONFIGURATION.md](04_CONFIGURATION.md)
 - **State Sealing Details**: [01_STATE_SEALING.md](01_STATE_SEALING.md)
+- **Raw Ingest Protocol**: [RAW_INGEST.md](RAW_INGEST.md)
 - **Authority Model**: [03_AUTHORITY_MODEL.md](03_AUTHORITY_MODEL.md)
 - **Architecture Overview**: [02_ARCHITECTURE.md](02_ARCHITECTURE.md)
 - **Access Events Design**: [access_events.md](access_events.md)
