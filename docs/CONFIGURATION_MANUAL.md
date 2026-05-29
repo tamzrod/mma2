@@ -387,7 +387,7 @@ Bytes (hex):  52 49 01 01 00 01 00 00 00 01 00
                                             ^^ payload: coil 0 = 0 (LSB-first)
 ```
 
-> **Note:** Writing 0 to the sealing coil sets the flag back to its sealed value. However, once a memory has been unsealed, re-sealing takes effect only after MMA is restarted (restart always returns the memory to sealed state). This packet is the correct way to pre-position the flag before a controlled restart.
+> **Note:** Writing 0 to the sealing coil seals the memory immediately — no restart is required. Seal and unseal are live operations controlled entirely by the flag value.
 
 **Shell example using `printf` and `nc`**
 
@@ -434,8 +434,9 @@ memory:
 
 - **CRITICAL**: `state_sealing.area` must be set to `"coil"` (singular). This is the ONLY supported value. Any other value will cause startup failure.
 - Sealing flag address must be within the configured coils area
-- Restarting MMA resets memory to sealed state
-- Once unsealed, cannot re-seal without restart
+- Seal and unseal take effect immediately when the flag is written — no restart required
+- Restarting MMA resets memory to sealed state (flag = 0)
+- To enable or disable state sealing entirely, change the configuration and restart
 - Raw Ingest bypasses sealing (by design, for unsealing)
 
 ---
