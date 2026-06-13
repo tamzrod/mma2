@@ -142,26 +142,31 @@ State Sealing is optional per memory.
 
 ```yaml
 state_sealing:
+  enabled: true
   area: coil
   address: 0
+  exception: 0x0B
 ```
 
 Fields:
-- `area`: Memory area containing the sealing flag. **MUST be "coil" (singular) - this is the ONLY supported value.**
-- `address`: Zero-based address within the coils area
+- `enabled`: Optional. Defaults to `true` when omitted. Set to `false` to disable sealing without removing the block.
+- `area`: Memory area containing the sealing flag. **MUST be "coil" (singular) - this is the ONLY supported value when sealing is enabled.**
+- `address`: Zero-based address within the coils area when sealing is enabled
+- `exception`: Optional Modbus exception code for sealed requests. Must be one of `0x01`, `0x02`, `0x03`, `0x04`, `0x05`, `0x06`, `0x08`, `0x0A`, `0x0B`. Defaults to `0x06`.
 
 **Semantics:**
 - Flag bit == 0 → sealed (Modbus blocked)
 - Flag bit == 1 → unsealed (Modbus allowed)
 
 **Validation:**
-- If `state_sealing` is present, the area must be set to "coil"
-- The coils area must exist in the memory layout
-- The address must be within bounds for the coils area
+- If `state_sealing.enabled` is omitted or `true`, the area must be set to "coil"
+- The coils area must exist in the memory layout when sealing is enabled
+- The address must be within bounds for the coils area when sealing is enabled
+- `exception`, when set, must be a supported Modbus exception code
 - Configuration loading fails if validation fails
 
 **Default:**
-- If `state_sealing` is absent, the memory is unsealed (default behavior)
+- If `state_sealing` is absent, or `enabled: false`, the memory is unsealed (default behavior)
 
 ---
 

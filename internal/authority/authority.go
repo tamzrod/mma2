@@ -8,8 +8,7 @@ import (
 	"mma2/internal/memorycore"
 )
 
-// Modbus exception codes we use.
-// Locked: state sealing MUST be Device Busy (0x06).
+// Modbus exception codes used by access-control decisions.
 const (
 	ExceptionIllegalFunction = 0x01
 	ExceptionDeviceBusy      = 0x06
@@ -55,7 +54,7 @@ func (a *Authority) SetMemoryPolicy(mid memorycore.MemoryID, p *MemoryPolicy) {
 }
 
 // Evaluate implements the locked order:
-// 1) state sealing check -> Device Busy (0x06)
+// 1) state sealing check
 // 2) access rules top-down -> first match wins
 // 3) default deny if no match or no policy
 func (a *Authority) Evaluate(req Request) Decision {

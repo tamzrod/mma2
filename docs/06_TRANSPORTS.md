@@ -62,7 +62,7 @@ Responsibilities:
 - map external addresses to internal zero-based addressing
 - reject invalid or out-of-bounds requests
 - enforce access control via authority model
-- enforce state sealing (return 0x06 Device Busy if sealed)
+- enforce state sealing (return the configured exception, default 0x06 / Device Busy, if sealed)
 
 Supported function codes:
 - FC1: Read Coils

@@ -3,11 +3,15 @@ package memorycore
 
 // StateSealingDef describes where the sealing flag lives.
 // Semantics:
-//   0 = sealed
-//   1 = unsealed
+//
+//	0 = sealed
+//	1 = unsealed
+//
+// ExceptionCode is transport metadata for the Modbus response when sealed.
 type StateSealingDef struct {
-	Area    Area
-	Address uint16
+	Area          Area
+	Address       uint16
+	ExceptionCode uint8
 }
 
 // SetStateSealing attaches a state sealing definition to this memory.

@@ -9,7 +9,6 @@ import (
 )
 
 // Sealing is policy state (NOT a memory lock).
-// Locked behavior: if sealed, Modbus must return Device Busy (0x06).
 type Sealing struct {
 	mu    sync.RWMutex
 	flags map[memorycore.MemoryID]*atomic.Bool
