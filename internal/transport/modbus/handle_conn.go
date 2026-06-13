@@ -19,8 +19,8 @@ func HandleConn(
 	conn net.Conn,
 	store *memorycore.Store,
 	auth *authority.Authority,
-	notifier *notify.Engine,     // OPTIONAL
-	ae *accessevents.Engine,     // OPTIONAL
+	notifier *notify.Engine, // OPTIONAL
+	ae *accessevents.Engine, // OPTIONAL
 	debug bool,
 ) {
 	defer conn.Close()
@@ -63,26 +63,11 @@ func HandleConn(
 
 		// --------------------
 		// STATE SEALING
-		// Presence-based: if state_sealing is configured and flag == 0 → Device Busy
 		// --------------------
-		if mem, ok := store.Get(mid); ok {
-			if seal := mem.StateSealing(); seal != nil {
-				buf := []byte{0}
-				if err := mem.ReadBits(seal.Area, seal.Address, 1, buf); err != nil {
-					pdu := BuildExceptionPDU(req.FunctionCode, 0x06) // Device Busy
-					frame := BuildResponse(req, pdu)
-					_, _ = conn.Write(frame)
-					continue
-				}
-
-				// 0 = sealed, 1 = unsealed
-				if (buf[0] & 0x01) == 0 {
-					pdu := BuildExceptionPDU(req.FunctionCode, 0x06) // Device Busy
-					frame := BuildResponse(req, pdu)
-					_, _ = conn.Write(frame)
-					continue
-				}
-			}
+		if pdu := stateSealingExceptionPDU(store, req); pdu != nil {
+			frame := BuildResponse(req, pdu)
+			_, _ = conn.Write(frame)
+			continue
 		}
 
 		// --------------------
@@ -122,4 +107,36 @@ func HandleConn(
 			return
 		}
 	}
+}
+
+func stateSealingExceptionPDU(store *memorycore.Store, req *Request) []byte {
+	if store == nil || req == nil {
+		return nil
+	}
+
+	mid := memorycore.MemoryID{
+		Port:   req.Port,
+		UnitID: uint16(req.UnitID),
+	}
+
+	mem, ok := store.Get(mid)
+	if !ok {
+		return nil
+	}
+
+	seal := mem.StateSealing()
+	if seal == nil {
+		return nil
+	}
+
+	buf := []byte{0}
+	if err := mem.ReadBits(seal.Area, seal.Address, 1, buf); err != nil {
+		return BuildExceptionPDU(req.FunctionCode, seal.ExceptionCode)
+	}
+
+	if (buf[0] & 0x01) == 0 {
+		return BuildExceptionPDU(req.FunctionCode, seal.ExceptionCode)
+	}
+
+	return nil
 }

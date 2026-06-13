@@ -116,9 +116,9 @@ func buildOneMemory(
 	}
 
 	// --------------------
-	// State Sealing (presence = enabled)
+	// State Sealing
 	// --------------------
-	if def.StateSealing != nil {
+	if stateSealingEnabled(def.StateSealing) {
 		area := strings.ToLower(strings.TrimSpace(def.StateSealing.Area))
 		if area != "coil" {
 			return fmt.Errorf("%s: state_sealing.area must be 'coil'", key)
@@ -144,8 +144,9 @@ func buildOneMemory(
 		}
 
 		mem.SetStateSealing(memorycore.StateSealingDef{
-			Area:    memorycore.AreaCoils,
-			Address: addr,
+			Area:          memorycore.AreaCoils,
+			Address:       addr,
+			ExceptionCode: stateSealingExceptionCode(def.StateSealing),
 		})
 	}
 

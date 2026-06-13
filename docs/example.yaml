@@ -78,9 +78,11 @@ listeners:
         # Default: sealed (flag = 0)
         # Unseal by writing 1 to coil 0 via RAW INGEST
         state_sealing:
-            # IMPORTANT: area must be "coil" (singular) - this is the ONLY supported value
+          enabled: true
+          # IMPORTANT: area must be "coil" (singular) - this is the ONLY supported value
           area: coil
           address: 0
+          exception: 0x06
 
         coils:
           start: 0

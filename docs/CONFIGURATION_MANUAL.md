@@ -326,14 +326,16 @@ memory:
       count: 500
     
     state_sealing:
-      area: coil        # REQUIRED: Must be "coil" (singular) - this is the ONLY supported value
+      enabled: true     # OPTIONAL: defaults to true when omitted
+      area: coil        # REQUIRED when enabled: must be "coil" (singular)
       address: 0        # Coil address that controls sealing
+      exception: 0x06   # OPTIONAL: defaults to 0x06 (Device Busy)
 ```
 
 ### How It Works
 
 1. **On Startup**: Memory is **sealed** (flag bit = 0)
-2. **Sealed Behavior**: All Modbus requests return exception `0x06 (Device Busy)`
+2. **Sealed Behavior**: All Modbus requests return the configured exception (default `0x06 / Device Busy`)
 3. **Unsealing**: Write `1` to the sealing flag bit (coil 0 in example above)
 4. **Unsealed Behavior**: Normal Modbus access is allowed
 5. **Raw Ingest**: Always allowed regardless of sealing state
@@ -426,7 +428,7 @@ memory:
 ```
 
 **Evaluation Order:**
-1. State sealing check (if sealed, return 0x06 immediately)
+1. State sealing check (if sealed, return the configured exception immediately; default 0x06)
 2. Policy evaluation (only if unsealed)
 3. Memory operation
 
@@ -1432,7 +1434,7 @@ If invalid, you'll see specific error messages and the process will exit.
 modpoll -m tcp -a 1 -r 0 -c 10 -t 4 localhost
 
 # Expected for sealed memory:
-# Exception 0x06 (Device Busy)
+# Configured state sealing exception (default 0x06 / Device Busy)
 
 # Expected for accessible memory:
 # Successfully read registers

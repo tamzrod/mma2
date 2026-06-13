@@ -57,15 +57,25 @@ This is the absolute default.
 
 ## 4. Enabling State Sealing
 
-State Sealing is enabled **only by presence** of the `state_sealing` section.
+State Sealing is enabled when the `state_sealing` section is present and either:
+
+- `enabled` is omitted (backward-compatible default), or
+- `enabled: true`
 
 ```yaml
 state_sealing:
-  area: coils
+  enabled: true
+  area: coil
   address: 0
+  exception: 0x0B
 ```
 
-There is no `enabled:` or `enable:` field. Presence of the section enables it.
+To keep the block but disable sealing explicitly:
+
+```yaml
+state_sealing:
+  enabled: false
+```
 
 **Effects:**
 - Memory starts **sealed** on process start
@@ -93,7 +103,8 @@ The flag location is evaluated **only when the memory is sealed**.
 
 When a memory is **sealed** (flag bit == 0):
 
-- **Modbus TCP:** All requests are rejected with exception **0x06 (Device Busy)**
+- **Modbus TCP:** All requests are rejected with the configured exception code
+- If `exception` is omitted, the default remains **0x06 (Device Busy)**
 - No partial reads
 - No fabricated data
 - No read-only downgrade
@@ -167,7 +178,7 @@ After the memory is unsealed (flag becomes 1):
 When a Modbus request targets a sealed memory:
 
 - The request is rejected **before** it reaches memorycore
-- Exception **0x06 (Device Busy)** is returned
+- The configured Modbus exception is returned (default **0x06 / Device Busy**)
 - No memory operation occurs
 
 ### Raw Ingest
@@ -184,9 +195,10 @@ When a Raw Ingest request targets a sealed memory:
 
 At startup, configuration validation must verify:
 
-1. If `state_sealing` is present, the area name must be valid
+1. If `state_sealing.enabled` is omitted or `true`, the area name must be valid
 2. The area must exist in the memory layout
 3. The address must be within bounds for that area
+4. If `exception` is set, it must be one of `0x01`, `0x02`, `0x03`, `0x04`, `0x05`, `0x06`, `0x08`, `0x0A`, `0x0B`
 
 Example (invalid configuration):
 
@@ -230,15 +242,15 @@ Any proposal that adds these capabilities is out of scope.
 
 ## 16. Final Contract
 
-If `state_sealing` is present in configuration:
+If `state_sealing` is present in configuration and enabled:
 
 - The memory is sealed at startup (flag must be 1 to unseal)
 - A single flag bit controls sealed/unsealed state
-- Modbus TCP rejects sealed access with 0x06
+- Modbus TCP rejects sealed access with the configured exception (default 0x06)
 - Raw Ingest always succeeds
 - Restart resets to sealed
 
-If `state_sealing` is absent:
+If `state_sealing` is absent, or `enabled: false`:
 
 - The memory is unsealed by default
 - Modbus TCP and Raw Ingest both immediately allowed

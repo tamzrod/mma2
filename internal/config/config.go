@@ -125,11 +125,17 @@ type NotifyRange struct {
 
 // StateSealingConfig defines where the sealing flag lives.
 // Semantics:
-//   0 = sealed
-//   1 = unsealed
+//
+//	0 = sealed
+//	1 = unsealed
+//
+// Presence keeps backward-compatible behavior: if enabled is omitted,
+// state sealing is enabled and the default Modbus exception is 0x06.
 type StateSealingConfig struct {
-	Area    string `yaml:"area"` // "coil" (only supported value for now)
-	Address uint16 `yaml:"address"`
+	Enabled   *bool  `yaml:"enabled,omitempty"`
+	Area      string `yaml:"area"` // "coil" (only supported value for now)
+	Address   uint16 `yaml:"address"`
+	Exception *uint8 `yaml:"exception,omitempty"`
 }
 
 // --------------------

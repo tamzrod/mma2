@@ -10,8 +10,8 @@ import (
 // Validate performs structural validation on the loaded configuration.
 // It enforces bounds and consistency only, and supports BOTH config shapes:
 //
-//   1) Legacy global memory model: cfg.Memory.Memories (each with explicit port)
-//   2) Nested listener model: listeners[].memory[] (port inferred from listeners[].listen)
+//  1. Legacy global memory model: cfg.Memory.Memories (each with explicit port)
+//  2. Nested listener model: listeners[].memory[] (port inferred from listeners[].listen)
 //
 // Runtime memory identity is ALWAYS (Port, UnitID).
 func Validate(cfg *Config) error {
@@ -270,7 +270,7 @@ func validateArea(memKey, name string, a Area) error {
 }
 
 func validateStateSealing(memKey string, def MemoryDefinition) error {
-	if def.StateSealing == nil {
+	if !stateSealingEnabled(def.StateSealing) {
 		return nil
 	}
 
@@ -292,6 +292,16 @@ func validateStateSealing(memKey string, def MemoryDefinition) error {
 		return fmt.Errorf(
 			"%s.state_sealing.address (%d) out of bounds for coils [%d..%d)",
 			memKey, addr, start, uint16(endExclusive),
+		)
+	}
+
+	exceptionCode := stateSealingExceptionCode(def.StateSealing)
+	if !isValidStateSealingExceptionCode(exceptionCode) {
+		return fmt.Errorf(
+			"%s.state_sealing.exception must be one of [%s], got 0x%02X",
+			memKey,
+			validStateSealingExceptionCodeList,
+			exceptionCode,
 		)
 	}
 
