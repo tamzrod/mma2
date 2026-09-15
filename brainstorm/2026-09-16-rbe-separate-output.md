@@ -33,13 +33,18 @@ Outputs are adapters. Initial outputs:
 
 Additional adapters may be added later without changing RBE semantics.
 
+Core principle:
+
+> **RBE = trigger. Modbus = value.**
+
 ```text
-memory write
-  → check configured RBE rules
-  → capture previous raw state atomically with the write when required
+incoming write
+  → determine whether an RBE rule intersects
+  → capture pre-write sealing state when RBE observation is required
+  → perform the memory write atomically with required raw change observation
   → successful commit
-  → suppress if state sealing is active
-  → compare previous vs new raw state
+  → if memory was sealed before this write, suppress RBE
+  → otherwise evaluate actual raw change for matching rule(s)
   → if changed, emit one RBE event per matching rule
       ├── TCP
       └── InfluxDB (optional)
@@ -84,18 +89,39 @@ An RBE event MUST NOT include:
 
 The PPC or other subscriber reacts to the event and reads the current value through Modbus.
 
-A minimal event should identify the rule and memory location, for example:
+An internal RBE event may identify the rule and memory location using:
 
+- RuleID
 - Name
 - Port
 - UnitID
 - Area
 - Start
 - Count
+- StreamID
 - Sequence
 - Timestamp
 
 No memory value is included.
+
+### Rule identity
+
+`name` is human-facing metadata for YAML, logs, and Influx.
+
+The low-latency TCP wire should use a small numeric `RuleID` rather than a variable-length name string.
+
+Rule IDs should be explicit in configuration so they remain deterministic across restarts and configuration reloads.
+
+Example:
+
+```yaml
+- id: 1
+  name: Active_Power_Setpoint
+  start: 2
+  count: 2
+```
+
+TCP may send `RuleID = 1`; Influx may still use `name=Active_Power_Setpoint`.
 
 ## RBE configuration
 
@@ -130,11 +156,13 @@ listeners:
 
         rbe:
           input_registers:
-            - name: Active_Power_Setpoint
+            - id: 1
+              name: Active_Power_Setpoint
               start: 2
               count: 2
 
-            - name: Reactive_Power_Setpoint
+            - id: 2
+              name: Reactive_Power_Setpoint
               start: 4
               count: 2
 ```
@@ -144,8 +172,8 @@ Meaning:
 ```text
 Input Registers
 
-2..3 → Active_Power_Setpoint
-4..5 → Reactive_Power_Setpoint
+2..3 → RuleID 1 → Active_Power_Setpoint
+4..5 → RuleID 2 → Reactive_Power_Setpoint
 ```
 
 If any cell inside a configured rule's intersection with a successful write actually changes, emit one event for that rule.
@@ -158,16 +186,38 @@ Do not emit per-address events and do not split a single rule into multiple chan
 
 State sealing suppresses RBE output.
 
-A successful memory update may still occur through permitted internal / Raw Ingest paths while the memory is sealed, but no RBE event is emitted while sealing is active.
+A successful memory update may still occur through permitted internal / Raw Ingest paths while the memory is sealed, but no RBE event is emitted for a write that originates while the memory is sealed.
 
-Exact behavior:
+### Sealing state timing
+
+RBE eligibility is determined from the sealing state that protected the memory **before the write is committed**.
+
+This rule is important for the write that unseals memory itself.
 
 ```text
-successful memory commit
+SEALED
+  ↓
+Raw Ingest changes data   → no RBE
+Raw Ingest writes seal 0→1→ no RBE
+  ↓
+UNSEALED
+next actual data change   → RBE allowed
+```
+
+The unsealing write MUST NOT produce a catch-up event or make other changes from that same sealed write eligible for RBE.
+
+Conceptually:
+
+```text
+incoming write
         ↓
-is this (Port, UnitID) sealed?
+capture pre-write sealing state
+        ↓
+atomic memory commit
+        ↓
+was memory sealed before this write?
    ├── yes → no RBE event
-   └── no  → compare old/new
+   └── no  → evaluate actual change
                ↓
              changed?
              ├── no  → nothing
@@ -184,11 +234,13 @@ Example:
 sealed
 1000 → 1100   memory changes, no RBE
 1100 → 1200   memory changes, no RBE
-unseal         no catch-up RBE
+unseal         no RBE from the unsealing write and no catch-up
 1200 → 1300   RBE emitted
 ```
 
-This is important for PPC operation: while a memory is intentionally sealed, setpoint-change and trip-related RBE triggers are silent even if Raw Ingest is refreshing or restoring underlying memory.
+This applies to every RBE rule under that sealed `(Port, UnitID)`, including setpoint and trip-related rules.
+
+If a trip must remain available while PPC control memory is sealed, it must use a memory/control path that is not suppressed by that sealing policy or an independent protection mechanism. RBE does not bypass sealing.
 
 ## TCP output
 
@@ -208,9 +260,28 @@ MMA
 
 The TCP framing should be small, deterministic, binary, and versioned.
 
-Sequence information should be included so the subscriber can detect discontinuity or missed/restarted streams.
+### Stream identity and sequence
 
-The exact wire protocol is not defined by this brainstorm yet.
+Sequence alone is not sufficient because sequence numbers may restart after MMA or the RBE engine restarts.
+
+Each RBE TCP stream should therefore have:
+
+- `StreamID` / boot-session identifier
+- monotonically increasing `Sequence` within that stream
+
+Conceptually:
+
+```text
+same StreamID + sequence gap
+    → subscriber knows one or more events were missed
+
+new StreamID
+    → subscriber knows the RBE stream restarted
+```
+
+No event replay is required. After a gap or new stream, the PPC reconciles current state through Modbus.
+
+The exact field widths, endian rules, framing length, and StreamID representation are not defined by this brainstorm yet.
 
 ## Influx output
 
@@ -232,17 +303,23 @@ Use a separate measurement such as:
 mma_rbe
 ```
 
+Influx may retain the human-facing rule `name` as a tag in addition to numeric rule identity.
+
 No memory values are included in the event.
 
 ## Performance model
 
 Do not maintain a separate last-value table in the RBE package. Memory already holds the current state.
 
-Only perform comparison work when a configured RBE rule intersects the incoming write.
+Only invoke additional RBE observation work when at least one configured RBE rule intersects the incoming write.
 
-Raw Ingest must be considered in the cost model. Its writes may be much larger than normal Modbus FC15 / FC16 limits, so do not blindly snapshot an entire incoming Raw Ingest range when only a small RBE rule intersects it.
+Raw Ingest must be considered in the cost model. Its writes may be much larger than normal Modbus FC15 / FC16 limits.
 
-Prefer capturing and comparing only the relevant RBE intersection(s).
+Correctness and core-layer purity take precedence over premature partial-range optimization.
+
+The implementation must NOT pass RBE rules, RBE names, or RBE-specific policy into `memorycore` merely to avoid copying or comparison work.
+
+A neutral memory primitive may return raw pre-write state or neutral raw change metadata while committing the write. If later optimization is required, any observed-range primitive must remain generic memory functionality and must not depend on RBE concepts.
 
 ## Atomicity requirement
 
@@ -254,19 +331,26 @@ Read → Compare → Write
 
 is not sufficient because another writer could modify the same memory between the read and the write.
 
-RBE requires the previous raw state associated with the actual committed write.
+RBE requires change information associated with the actual committed write.
 
 Any implementation must preserve atomicity under the existing memory lock.
 
-Memorycore must remain semantically unaware of RBE. It may expose a neutral atomic memory primitive that can return overwritten raw state while committing a write, but it must not:
+Memorycore must remain semantically unaware of RBE. It may expose a neutral atomic memory primitive that can return overwritten raw state or neutral change metadata while committing a write, but it must not:
 
 - know RBE rules
-- compare values for RBE semantics
+- know RuleID or rule names
 - emit events
 - know output adapters
 - store source IP
+- decide whether an RBE event should exist
 
-Change interpretation remains outside memorycore.
+Raw equality/change metadata is permitted only as a neutral memory-operation result; RBE interpretation remains outside `memorycore`.
+
+### Rejected direction
+
+Do not make `memorycore` accept RBE-specific subranges or RBE rule objects in order to perform selective snapshots.
+
+That would leak observation policy into the core.
 
 ## Output architecture
 
@@ -281,7 +365,9 @@ rbe.Adapter
 
 One actual change may fan out to multiple configured sinks without changing event semantics.
 
-## Old notify removal
+Adapter failure must never change whether the memory write succeeds.
+
+## Old notify removal and documentation cutover
 
 If RBE is promoted to an implementation phase, remove the old write-only notify feature rather than keeping two overlapping event systems.
 
@@ -292,7 +378,15 @@ Expected removal / replacement scope includes:
 - old `mma_notify` measurement references
 - notify wiring from Modbus
 - notify wiring from Raw Ingest
-- `docs/MMA_Notification_Engine_LOCKED.md`
+
+Documentation cutover must be ordered safely:
+
+1. Define and approve the locked RBE architecture contract.
+2. Implement and verify RBE behavior.
+3. Remove old notify runtime wiring/configuration.
+4. Retire `docs/MMA_Notification_Engine_LOCKED.md` only when the new locked RBE document becomes authoritative.
+
+Do not delete the existing locked notify contract before its replacement contract exists.
 
 Replacement concepts:
 
@@ -308,19 +402,27 @@ Replacement concepts:
 - No old/new payloads.
 - No scaling or semantic interpretation.
 - RBE rules are memory-area based, not function-code based.
+- Rule IDs are explicit and numeric for deterministic low-latency TCP identity.
+- Rule names remain human-facing metadata.
 - Emit only after a successful memory commit.
 - Identical-value writes emit nothing.
+- RBE eligibility uses the pre-write sealing state.
+- A write that unseals a sealed memory emits no RBE.
 - Sealed memory emits no RBE events.
 - No catch-up events after unsealing.
 - Adapter failure must not change memory-write success.
 - TCP output is intended for low-latency direct PPC notification.
+- TCP uses a persistent connection.
+- TCP stream identity and sequence allow discontinuity/restart detection.
+- After stream discontinuity/restart, Modbus is used for reconciliation rather than RBE replay.
 - Influx is optional and used for historical/event observation.
 - No per-address event storms.
 - No rule merging or deduplication across independently configured RBE rules.
+- RBE-specific policy must not leak into `memorycore`.
 
 ## Non-goals
 
-- Change detection logic inside memorycore
+- RBE semantics inside memorycore
 - Sending register/coil values in RBE events
 - Replacing Modbus as the source of truth
 - Scaling or interpreting data
@@ -328,12 +430,12 @@ Replacement concepts:
 - A protection relay replacement
 - Per-address event storms
 - Catch-up/replay of changes that happened while sealed
+- RBE-specific snapshot/range policy inside memorycore
 
 ## Open questions before promotion to a phase
 
-- Exact neutral atomic memory primitive required to capture pre-write state safely
-- Exact RBE TCP binary frame layout
+- Exact neutral atomic memory primitive / return shape for safe raw change observation
+- Exact RBE TCP binary frame field widths and endian/framing rules
 - TCP subscriber model: one subscriber or multiple simultaneous subscribers
-- Reconnect behavior and sequence reset semantics
 - Queue/backpressure policy for TCP without blocking memory writes
-- Whether TCP adapter should expose one listening endpoint globally or allow per-output endpoints
+- Whether TCP adapter should expose one listening endpoint globally or allow multiple configured endpoints
