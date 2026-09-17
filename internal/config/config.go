@@ -9,32 +9,24 @@ type Config struct {
 	Ingress []IngressGate `yaml:"listeners"`
 	Memory  MemoryConfig  `yaml:"memory"`
 
-	// Optional notify output configuration (adapters).
-	// Absence means notify engine has no external adapters configured.
+	// Legacy write-only notification; retained until RBE cutover is verified.
 	Notify *NotifyOutputConfig `yaml:"notify"`
 
-	// Optional access event system configuration.
-	// Absence (or enabled: false) disables the system entirely.
-	AccessEvents *accessevents.AccessEventsConfig `yaml:"access_events"`
+	// RBE output configuration (TCP is the first implemented output).
+	RBE *RBEOutputConfig `yaml:"rbe"`
 
-	// Debug enables verbose protocol-level logging (e.g. malformed packets).
-	// Defaults to false when the key is absent from the config file.
+	AccessEvents *accessevents.AccessEventsConfig `yaml:"access_events"`
 	Debug bool `yaml:"debug"`
 }
 
 // --------------------
-// Notify Output (Adapters)
+// Legacy Notify Output (Adapters)
 // --------------------
 
-// NotifyOutputConfig declares optional notification adapters.
-// This is separate from per-memory notify rules.
-// This config only describes output sinks.
 type NotifyOutputConfig struct {
 	Influx *NotifyInfluxConfig `yaml:"influx"`
 }
 
-// NotifyInfluxConfig defines configuration for the InfluxDB adapter.
-// All fields required except Measurement.
 type NotifyInfluxConfig struct {
 	URL         string `yaml:"url"`
 	Token       string `yaml:"token"`
@@ -44,29 +36,49 @@ type NotifyInfluxConfig struct {
 }
 
 // --------------------
+// RBE output and rule declarations
+// --------------------
+
+// RBEOutputConfig defines the global RBE output endpoint.
+// Influx is intentionally deferred until its adapter is implemented.
+type RBEOutputConfig struct {
+	TCP *RBETCPConfig `yaml:"tcp"`
+}
+
+type RBETCPConfig struct {
+	Listen string `yaml:"listen"`
+}
+
+// RBERulesConfig declares independent memory-area-based rules.
+// IDs are unique globally for the one-byte TCP wire contract.
+type RBERulesConfig struct {
+	Coils          []RBERuleConfig `yaml:"coils"`
+	DiscreteInputs []RBERuleConfig `yaml:"discrete_inputs"`
+	HoldingRegs    []RBERuleConfig `yaml:"holding_registers"`
+	InputRegs      []RBERuleConfig `yaml:"input_registers"`
+}
+
+type RBERuleConfig struct {
+	ID    uint16 `yaml:"id"` // validated in 1..255 before narrowing to uint8
+	Name  string `yaml:"name"`
+	Start uint16 `yaml:"start"`
+	Count uint16 `yaml:"count"`
+}
+
+// --------------------
 // Ingress
 // --------------------
 
-// IngressGate defines a TCP ingress gate.
-// It owns the listener only.
-//
-// NOTE:
-// Memory is OPTIONAL here for the new nested model.
-// The legacy global memory model is still supported.
 type IngressGate struct {
 	ID     string `yaml:"id"`
 	Listen string `yaml:"listen"`
-
-	// Optional nested memory definitions (NEW MODEL)
 	Memory []MemoryDefinition `yaml:"memory"`
 }
 
 // --------------------
-// Memory (LEGACY / CANONICAL RUNTIME MODEL)
+// Memory
 // --------------------
 
-// MemoryConfig declares all memory layouts.
-// Memory identity is (Port, UnitID).
 type MemoryConfig struct {
 	Memories map[string]MemoryDefinition `yaml:"memories"`
 }
@@ -80,17 +92,10 @@ type MemoryDefinition struct {
 	HoldingRegs    Area `yaml:"holding_registers"`
 	InputRegs      Area `yaml:"input_registers"`
 
-	// Optional notification rules (rule-centric, write-only).
-	// Presence enables notify rule configuration for this memory.
-	// Normalization/validation happens outside memorycore.
-	Notify *NotifyConfig `yaml:"notify"`
-
-	// Optional state sealing configuration.
-	// Presence = enabled.
+	Notify       *NotifyConfig       `yaml:"notify"` // legacy
+	RBE          *RBERulesConfig     `yaml:"rbe"`
 	StateSealing *StateSealingConfig `yaml:"state_sealing"`
-
-	// Optional per-memory authorization policy
-	Policy *MemoryPolicyConfig `yaml:"policy"`
+	Policy       *MemoryPolicyConfig `yaml:"policy"`
 }
 
 type Area struct {
@@ -99,12 +104,9 @@ type Area struct {
 }
 
 // --------------------
-// Notify (Rule-Centric, Write-Only)
+// Legacy Notify (Rule-Centric, Write-Only)
 // --------------------
 
-// NotifyConfig declares notify rules per memory area.
-// Each entry is an independent rule.
-// Overlaps are allowed; no merging; no deduplication.
 type NotifyConfig struct {
 	Coils          []NotifyRange `yaml:"coils"`
 	DiscreteInputs []NotifyRange `yaml:"discrete_inputs"`
@@ -112,7 +114,6 @@ type NotifyConfig struct {
 	InputRegs      []NotifyRange `yaml:"input_registers"`
 }
 
-// NotifyRange is a single notify rule for an area.
 type NotifyRange struct {
 	Start uint16  `yaml:"start"`
 	Count uint16  `yaml:"count"`
@@ -123,17 +124,9 @@ type NotifyRange struct {
 // State Sealing
 // --------------------
 
-// StateSealingConfig defines where the sealing flag lives.
-// Semantics:
-//
-//	0 = sealed
-//	1 = unsealed
-//
-// Presence keeps backward-compatible behavior: if enabled is omitted,
-// state sealing is enabled and the default Modbus exception is 0x06.
 type StateSealingConfig struct {
 	Enabled   *bool  `yaml:"enabled,omitempty"`
-	Area      string `yaml:"area"` // "coil" (only supported value for now)
+	Area      string `yaml:"area"`
 	Address   uint16 `yaml:"address"`
 	Exception *uint8 `yaml:"exception,omitempty"`
 }
@@ -142,18 +135,12 @@ type StateSealingConfig struct {
 // Policy
 // --------------------
 
-// MemoryPolicyConfig declares access rules scoped to a single memory definition.
-// Rules are evaluated top-down; first match wins; default deny if none match.
 type MemoryPolicyConfig struct {
 	Rules []PolicyRuleConfig `yaml:"rules"`
 }
 
 type PolicyRuleConfig struct {
 	ID string `yaml:"id"`
-
-	// CIDR or bare IP strings. Bare IPs are treated as /32 (IPv4) or /128 (IPv6).
 	SourceIP []string `yaml:"source_ip"`
-
-	// Allowed Modbus function codes for this rule.
 	AllowFC []uint8 `yaml:"allow_fc"`
 }
