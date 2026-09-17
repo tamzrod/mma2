@@ -1,0 +1,48 @@
+# RBE TCP v1 demonstration on the feature branch.
+# MMA2 listens on :9001; PPC connects, reads one RuleID byte per event,
+# and immediately reads the actual value via Modbus TCP on :502.
+# Both ports must be firewalled to trusted control-network peers.
+# A new TCP connection is NOT a snapshot; PPC must read Modbus after connect.
+
+rbe:
+  tcp:
+    listen: ":9001"
+
+listeners:
+  - id: ppc
+    listen: ":502"
+    memory:
+      - unit_id: 1
+        coils:
+          start: 0
+          count: 1
+        input_registers:
+          start: 0
+          count: 100
+        state_sealing:
+          enabled: true
+          area: coil
+          address: 0
+          exception: 0x06
+        # Replace this example localhost rule with your real PPC client IP.
+        policy:
+          rules:
+            - id: ppc_local
+              source_ip: ["127.0.0.1"]
+              allow_fc: [1, 2, 3, 4]
+        rbe:
+          input_registers:
+            - id: 1
+              name: Active_Power_Setpoint
+              start: 2
+              count: 2
+            - id: 2
+              name: Reactive_Power_Setpoint
+              start: 4
+              count: 2
+
+# Raw Ingest can populate input registers while sealed. No RBE events are
+# sent until a later write begins in an unsealed state. Unseal via Raw Ingest
+# coil 0 := 1; that unsealing write never generates a catch-up event.
+# Each setpoint spanning two registers should be written in one Raw Ingest
+# operation, not as two independent half-value writes.
