@@ -44,6 +44,13 @@ func NewInfluxSink(baseURL, org, bucket, token, measurement string, rules []Rule
 	if strings.ContainsAny(measurement, " ,\r\n") {
 		return nil, fmt.Errorf("rbe influx: invalid measurement name")
 	}
+	// A rule name becomes a line-protocol tag. Newlines would split one event
+	// into several points, so reject them before the sink starts.
+	for _, r := range rules {
+		if strings.ContainsAny(r.Name, "\r\n") {
+			return nil, fmt.Errorf("rbe influx: rule %d name must not contain line breaks", r.ID)
+		}
+	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/v2/write"
 	q := u.Query()
 	q.Set("org", org)
@@ -92,6 +99,10 @@ func escapeTag(s string) string {
 	s = strings.ReplaceAll(s, " ", "\\ ")
 	s = strings.ReplaceAll(s, ",", "\\,")
 	s = strings.ReplaceAll(s, "=", "\\=")
+	// Line-protocol tags cannot contain raw line breaks. Keep one event on one
+	// line even if a name somehow bypassed construction validation.
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
 	return s
 }
 

@@ -4,7 +4,11 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 )
+
+// acceptRetryDelay bounds how fast the accept loop spins on transient errors.
+const acceptRetryDelay = 5 * time.Millisecond
 
 // TCPPublisher publishes exactly one RuleID byte per event. MMA owns the
 // listening socket; subscribers connect and read bytes from a persistent TCP
@@ -82,7 +86,17 @@ func (p *TCPPublisher) acceptLoop() {
 			if closed {
 				return
 			}
-			// An unexpected listener error is terminal, not a busy-loop.
+			// Transient accept failures (for example fd exhaustion) must not
+			// permanently disable RBE delivery. Back off briefly and retry;
+			// only a permanent listener error is terminal.
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				select {
+				case <-p.done:
+					return
+				case <-time.After(acceptRetryDelay):
+				}
+				continue
+			}
 			_ = p.Close()
 			return
 		}

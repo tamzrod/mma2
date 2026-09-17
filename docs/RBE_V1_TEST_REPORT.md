@@ -1,85 +1,140 @@
 # RBE v1 test report
 
-Branch: `feature/rbe-tcp-v1`  
-Date: 2026-09-17  
-Scope: test the one-byte RBE implementation, fix verified defects, add regressions.  
+Branch: `feature/rbe-tcp-v1`
+Date: 2026-09-17
+Scope: test the one-byte RBE implementation, fix verified defects, add regressions.
 Constraints honored: `main` not modified, architecture not redesigned, nothing deployed.
+
+This report covers the current tip. It supersedes the earlier iteration on this
+branch, which fixed an overflow path that could emit reserved `0x00` and shipped
+the first regression set. This iteration independently re-verified the
+implementation, added process-level end-to-end coverage, and fixed two further
+defects.
 
 ## Commands actually run
 
-Working tree: clone of `tamzrod/mma2` at `feature/rbe-tcp-v1`.
+Toolchain: Go 1.25.0 (installed locally in the sandbox; the base image had no Go).
+Module download used `GOPROXY=https://proxy.golang.org,direct`.
 
 ```text
-GOPROXY=https://proxy.golang.org,direct
+go build ./...
+go vet ./...
 go test ./... -count=1
-go test -race ./internal/rbe ./internal/memorycore \
-  ./internal/transport/modbus ./internal/transport/rawingest \
-  ./internal/config -count=1
+go test -race ./... -count=1
+go test ./internal/rbe/ ./internal/config/ -count=30
+bash test/rbe_e2e/run_test.sh          # process-level end-to-end
+python3 test/rbe_e2e/e2e.py            # negative control also run
 ```
-
-The sandbox default `GOPROXY=http://35.245.43.102/go/` returned `502` for
-`gopkg.in/yaml.v3@v3.0.1`. Tests that import config were re-run against
-`https://proxy.golang.org,direct`. That is an environment issue, not an RBE defect.
 
 ## Results
 
-| Package | `go test ./...` | `-race` |
-|---|---|---|
-| `internal/rbe` | ok | ok |
-| `internal/memorycore` | ok | ok |
-| `internal/config` | ok | ok |
-| `internal/transport/modbus` | ok | ok |
-| `internal/transport/rawingest` | ok | ok |
-| `tools` | ok (no tests) | n/a |
-| `cmd/mma2`, `internal/ingress`, `internal/notify`, others | no test files | n/a |
+| Package | `go test ./...` | `-race` | notes |
+|---|---|---|---|
+| `internal/rbe` | ok | ok | incl. 4000-iteration differential check |
+| `internal/memorycore` | ok | ok | |
+| `internal/config` | ok | ok | |
+| `internal/transport/modbus` | ok | ok | |
+| `internal/transport/rawingest` | ok | ok | |
+| `tools` | ok (no tests) | n/a | |
+| `cmd/mma2`, `internal/ingress`, `internal/notify`, others | no test files | n/a | |
 
-`go test ./...` after the fixes: **PASS**.  
-Focused race tests after the fixes: **PASS**.
+`go build ./...`, `go vet ./...`, `go test ./...` and `go test -race ./...`:
+**PASS** on this tip. `internal/rbe` and `internal/config` also passed 30
+consecutive runs (flakiness check).
+
+Process-level end-to-end (`test/rbe_e2e/run_test.sh`): **PASS**. It builds
+`cmd/mma2`, starts it on `test/rbe_e2e/config.yaml`, and drives the real binary
+over TCP:
+
+- a fresh RBE connection is silent (no snapshot/replay)
+- a watched input-register write while sealed commits but emits nothing
+- the unsealing write emits nothing (no catch-up)
+- an identical refresh emits nothing
+- a real change in rule 1 emits exactly one byte `0x01`
+- a real change in rule 2 emits exactly one byte `0x02`
+- Modbus FC4 then reads the value written via Raw Ingest
+- no extra bytes follow the expected events
+
+A negative control (rule 1 moved off the tested range) makes the harness report
+`FAIL - rule 1 event missing`, confirming it detects wrong results rather than
+always passing. That closes the earlier report's open item (3).
 
 No measured PPC trigger-to-read p95/p99 numbers were collected. The draft
-explicitly forbids inventing latency guarantees.
+explicitly forbids inventing latency guarantees; there is no plant-like path in
+this environment.
 
-## Verified defect and fix
+## Defects verified and fixed in this iteration
 
-**TCP overflow / shutdown could leave a writer parked on a full per-client
-queue, and closing that queue without an `ok` check would emit reserved
-`0x00`.**
+### 1. Influx line-protocol injection via rule name
 
-`TCPPublisher.Publish` disconnected a slow subscriber by deleting it from the
-client map and closing the socket while the write loop was still selected on
-the live queue. After overflow nobody sends on that queue again. Closing the
-publisher later closed the same class of channel; `case id := <-queue` treats
-a closed channel as `id == 0` and would write the reserved byte.
+`rbe.escapeTag` escaped `\`, space, `,` and `=` but not CR/LF. A configured rule
+name such as `EVIL\ninjected line,name=x` produced a multi-line HTTP body, so
+one RBE event became several line-protocol points. The measurement name was
+already validated against `" ,\r\n"`, but rule names were not.
 
-Fix in `internal/rbe/tcp.go`:
+Fix:
 
-- overflow closes the per-client queue, then closes the socket outside the lock
-- `writeLoop` treats `!ok` as disconnect and never writes `0x00`
-- `Close` closes remaining queues so writers unblock
+- `NewInfluxSink` rejects rule names containing `\r` or `\n` before the sink starts.
+- `BuildRBERules` rejects such names at configuration validation, with a clear
+  `listeners[...].rbe.<area>[i].name` path.
+- `escapeTag` defensively strips CR/LF so one event always serializes to one line.
 
-Regression: `TestTCPPublisherOverflowDisconnectsSlowSubscriber`.
+Regressions: `TestInfluxSinkRejectsRuleNameWithLineBreak`,
+`TestInfluxSinkSingleEventSingleLine`,
+`TestBuildRBERulesRejectsRuleNameWithLineBreak`.
 
-## Regressions added
+Reverted-fix check: the two Influx tests and the config test fail on the
+unfixed tip, then pass with the fix. Verified.
 
-- `internal/rbe`: overflow disconnect, independent subscriber queues, overlapping
-  rules, unaligned coil change-only compare, concurrent writers, MultiSink fan-out
-- `internal/transport/modbus`: FC16 change-only RBE, reads emit nothing
-- `internal/transport/rawingest`: sealed Raw Ingest write commits with no event,
-  unseal has no catch-up, later unsealed change emits one RuleID
+### 2. Transient TCP accept error permanently disabled RBE delivery
 
-Existing engine / config / Influx metadata-only tests still pass.
+`TCPPublisher.acceptLoop` treated any non-closed `Accept` error as terminal and
+called `Close()`. Real listeners can return transient/temporary errors (for
+example descriptor exhaustion). One such error stopped RBE for the process
+lifetime.
+
+Fix: retry temporary errors with a small bounded backoff (5 ms) and exit the
+loop only on closure or a permanent error, matching the standard-library server
+pattern. No change to wire semantics, queues, or the memory write path.
+
+Regression: `TestTCPPublisherTransientAcceptErrorIsNotFatal`.
+
+Reverted-fix check: the test fails on the unfixed tip (connection refused) and
+passes with the fix. Verified.
+
+## Defect fixed in the previous iteration (retained)
+
+`TCPPublisher` overflow could leave a writer parked on a full per-client queue,
+and closing that queue without an `ok` check could emit reserved `0x00`. Fixed
+by closing the queue on overflow, checking `ok` in `writeLoop`, and closing
+remaining queues on `Close`. Regressions:
+`TestTCPPublisherOverflowDisconnectsSlowSubscriber`,
+`TestTCPPublisherIndependentSubscriberQueues`.
+
+## Additional verification performed
+
+- Randomized differential test (`TestEngineDifferentialRandomWrites`): 6 random
+  rules over registers and coils, 4000 random writes, compared against an
+  independent reference model. Emit decisions matched exactly, with at most one
+  event per intersecting rule.
+- Absolute-address handling (`TestEngineRuleAgainstNonZeroAreaStart`): rules are
+  compared in absolute address space, not a remapped offset.
+- Sealing is per memory; unsealing one memory does not suppress another
+  (verified during probing; covered by existing sealing tests plus the e2e run).
+- Concurrent writers through the engine under `-race`: no races; memory stays
+  authoritative and the engine adds no last-value cache.
 
 ## Remaining blockers (do not treat as done)
 
 1. Contract is still **NOT LOCKED**. `docs/MMA_Notification_Engine_LOCKED.md`
    must stay until review + cutover.
-2. No live MMA2 process + real PPC p95/p99 trigger-to-read measurement.
-3. No process-level binary test of `cmd/mma2` on `examples/rbe-tcp.yaml`
-   (config listen ports are fixed; `:0` is rejected by validation).
-4. Influx isolation was unit-tested (metadata-only HTTP sink + MultiSink).
-   There was no live InfluxDB in this environment.
-5. Do not remove legacy `notify` or merge to `main` until the contract is
+2. No live PPC and no measured trigger-to-read p95/p99 latency.
+3. No live InfluxDB; Influx isolation is covered by an in-process HTTP test
+   server only.
+4. Do not remove legacy `notify` or merge to `main` until the contract is
    reviewed and the latency gate is measured on a plant-like path.
+5. The e2e harness uses fixed localhost ports (15020/19001) and requires them
+   to be free.
 
 ## Not done, by instruction
 

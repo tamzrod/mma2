@@ -67,6 +67,7 @@ func BuildRBERules(cfg *Config) ([]rbe.Rule, error) {
 					path := fmt.Sprintf("%s.%s[%d]", prefix, a.name, ri)
 					if rule.ID == 0 || rule.ID > 255 { return nil, fmt.Errorf("%s.id: must be 1..255", path) }
 					if strings.TrimSpace(rule.Name) == "" { return nil, fmt.Errorf("%s.name: must not be empty", path) }
+					if strings.ContainsAny(rule.Name, "\r\n") { return nil, fmt.Errorf("%s.name: must not contain line breaks", path) }
 					if rule.Count == 0 || uint32(rule.Start)+uint32(rule.Count) > 65536 || a.layout.Count == 0 || uint32(rule.Start) < uint32(a.layout.Start) || uint32(rule.Start)+uint32(rule.Count) > uint32(a.layout.Start)+uint32(a.layout.Count) {
 						return nil, fmt.Errorf("%s: rule range must be nonempty and contained in allocated memory area", path)
 					}

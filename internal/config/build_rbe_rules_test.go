@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func validRBETestConfig() *Config {
 	return &Config{
@@ -40,5 +43,22 @@ func TestBuildRBERulesRejectsDuplicatesAndInvalidBounds(t *testing.T) {
 			tc.change(cfg)
 			if _, err := BuildRBERules(cfg); err == nil { t.Fatal("invalid config accepted") }
 		})
+	}
+}
+
+// A rule name becomes an Influx tag; CR/LF would split one event into multiple
+// line-protocol points, so configuration must reject it before startup.
+func TestBuildRBERulesRejectsRuleNameWithLineBreak(t *testing.T) {
+	for _, name := range []string{"Normal_Name", "with spaces", "a\nb", "a\rb"} {
+		cfg := validRBETestConfig()
+		cfg.Ingress[0].Memory[0].RBE.InputRegs[0].Name = name
+		_, err := BuildRBERules(cfg)
+		suspicious := strings.ContainsAny(name, "\r\n")
+		if suspicious && err == nil {
+			t.Fatalf("name %q accepted", name)
+		}
+		if !suspicious && err != nil {
+			t.Fatalf("name %q rejected: %v", name, err)
+		}
 	}
 }

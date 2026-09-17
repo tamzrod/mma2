@@ -3,9 +3,35 @@ package rbe
 import (
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
+
+// flakyListener returns one transient Temporary() error before delegating to a
+// real listener, modelling fd exhaustion or a similar recoverable condition.
+type flakyListener struct {
+	real net.Listener
+	once sync.Once
+}
+
+type temporaryError struct{}
+
+func (temporaryError) Error() string   { return "transient accept failure" }
+func (temporaryError) Timeout() bool   { return false }
+func (temporaryError) Temporary() bool { return true }
+
+func (l *flakyListener) Accept() (net.Conn, error) {
+	var err error
+	l.once.Do(func() { err = temporaryError{} })
+	if err != nil {
+		return nil, err
+	}
+	return l.real.Accept()
+}
+
+func (l *flakyListener) Close() error   { return l.real.Close() }
+func (l *flakyListener) Addr() net.Addr { return l.real.Addr() }
 
 func TestTCPPublisherOneByteAndPersistentConnection(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -204,5 +230,41 @@ func TestTCPPublisherIndependentSubscriberQueues(t *testing.T) {
 		if b[0] != 7 {
 			t.Fatalf("subscriber %d got %d", i, b[0])
 		}
+	}
+}
+
+// A single transient accept error must not permanently disable RBE delivery.
+func TestTCPPublisherTransientAcceptErrorIsNotFatal(t *testing.T) {
+	real, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewTCPPublisher(&flakyListener{real: real}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	// Give the accept loop time to consume the injected transient error.
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", real.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		p.mu.Lock()
+		n := len(p.clients)
+		p.mu.Unlock()
+		if n == 1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("publisher stopped accepting after transient error (clients=%d)", n)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
