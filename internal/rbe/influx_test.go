@@ -1,0 +1,43 @@
+package rbe
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"mma2/internal/memorycore"
+)
+
+func TestInfluxSinkMetadataOnly(t *testing.T) {
+	lines := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/write" || r.URL.Query().Get("org") != "mma" || r.URL.Query().Get("bucket") != "events" {
+			t.Errorf("unexpected endpoint: %s", r.URL.String())
+		}
+		if r.Header.Get("Authorization") != "Token test-token" { t.Errorf("unexpected authorization") }
+		body, _ := io.ReadAll(r.Body)
+		lines <- string(body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	sink, err := NewInfluxSink(server.URL, "mma", "events", "test-token", "mma_rbe", []Rule{{
+		ID: 1, Name: "Active_Power_Setpoint", Memory: memorycore.MemoryID{Port: 502, UnitID: 1},
+		Area: memorycore.AreaInputRegs, Start: 2, Count: 2,
+	}})
+	if err != nil { t.Fatal(err) }
+	sink.Publish(1)
+	select {
+	case line := <-lines:
+		for _, want := range []string{"mma_rbe,rule_id=1,name=Active_Power_Setpoint,port=502,unit=1,area=input_registers", "start=2i,count=2i"} {
+			if !strings.Contains(line, want) { t.Fatalf("line protocol %q missing %q", line, want) }
+		}
+		if strings.Contains(line, "value=") || strings.Contains(line, "old=") || strings.Contains(line, "new=") {
+			t.Fatalf("memory value exposed in event: %q", line)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no Influx RBE received")
+	}
+}
