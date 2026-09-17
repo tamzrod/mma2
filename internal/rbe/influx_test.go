@@ -41,3 +41,25 @@ func TestInfluxSinkMetadataOnly(t *testing.T) {
 		t.Fatal("no Influx RBE received")
 	}
 }
+
+func TestMultiSinkFansOutIndependently(t *testing.T) {
+	a := &captureSink{}
+	b := &captureSink{}
+	m := &MultiSink{Sinks: []Sink{a, b, nil}}
+	m.Publish(9)
+	if !bytesEqual(a.ids, []uint8{9}) || !bytesEqual(b.ids, []uint8{9}) {
+		t.Fatalf("fan-out a=%v b=%v", a.ids, b.ids)
+	}
+}
+
+func bytesEqual(a, b []uint8) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
