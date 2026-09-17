@@ -21,9 +21,7 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatalf("usage: mma2 <config.yaml>")
-	}
+	if len(os.Args) != 2 { log.Fatalf("usage: mma2 <config.yaml>") }
 	cfgPath := os.Args[1]
 	ext := strings.ToLower(filepath.Ext(cfgPath))
 	if ext != ".yaml" && ext != ".yml" {
@@ -35,12 +33,10 @@ func main() {
 	if err != nil { log.Fatalf("config load failed: %v", err) }
 	if err := config.Validate(cfg); err != nil { log.Fatalf("config validation failed: %v", err) }
 
-	// RBE rules, global IDs, ranges and the dedicated output port must be
-	// validated before any listener is started.
+	// Validate all RBE IDs, ranges, and endpoints before any listener starts.
 	rbeRules, err := config.BuildRBERules(cfg)
 	if err != nil { log.Fatalf("RBE validation failed: %v", err) }
 	log.Println("config loaded and validated successfully")
-
 	store, err := config.BuildMemoryStore(cfg)
 	if err != nil { log.Fatalf("memory build failed: %v", err) }
 	auth := authority.New()
@@ -56,35 +52,41 @@ func main() {
 		if registry != nil {
 			var adapter notify.Adapter
 			if cfg.Notify != nil && cfg.Notify.Influx != nil {
-				influxCfg := cfg.Notify.Influx
-				adapter = notify.NewInfluxAdapter(influxCfg.URL, influxCfg.Org, influxCfg.Bucket, influxCfg.Token, influxCfg.Measurement)
+				c := cfg.Notify.Influx
+				adapter = notify.NewInfluxAdapter(c.URL, c.Org, c.Bucket, c.Token, c.Measurement)
 				log.Println("notify engine enabled (influx adapter)")
 			} else {
 				adapter = notify.NewStdoutAdapter()
 				log.Println("notify engine enabled (stdout adapter)")
 			}
 			notifier = notify.NewEngine(registry, adapter, 256)
-		} else {
-			log.Println("notify engine disabled (no rules)")
-		}
+		} else { log.Println("notify engine disabled (no rules)") }
 	}
 
 	var observer *rbe.Engine
 	if cfg.RBE != nil {
-		// Bind before beginning ingress; port conflicts fail startup.
-		ln, err := net.Listen("tcp", cfg.RBE.TCP.Listen)
-		if err != nil { log.Fatalf("RBE TCP bind failed: %v", err) }
-		publisher, err := rbe.NewTCPPublisher(ln, 256)
-		if err != nil {
-			_ = ln.Close()
-			log.Fatalf("RBE TCP publisher failed: %v", err)
+		var sinks []rbe.Sink
+		if cfg.RBE.TCP != nil {
+			ln, err := net.Listen("tcp", cfg.RBE.TCP.Listen)
+			if err != nil { log.Fatalf("RBE TCP bind failed: %v", err) }
+			publisher, err := rbe.NewTCPPublisher(ln, 256)
+			if err != nil {
+				_ = ln.Close()
+				log.Fatalf("RBE TCP publisher failed: %v", err)
+			}
+			sinks = append(sinks, publisher)
+			log.Printf("RBE TCP listening on %s", cfg.RBE.TCP.Listen)
 		}
-		observer, err = rbe.NewEngine(rbeRules, publisher)
-		if err != nil {
-			_ = publisher.Close()
-			log.Fatalf("RBE engine failed: %v", err)
+		if cfg.RBE.Influx != nil {
+			c := cfg.RBE.Influx
+			influx, err := rbe.NewInfluxSink(c.URL, c.Org, c.Bucket, c.Token, c.Measurement, rbeRules)
+			if err != nil { log.Fatalf("RBE Influx configuration failed: %v", err) }
+			sinks = append(sinks, influx)
+			log.Println("RBE Influx output enabled")
 		}
-		log.Printf("RBE TCP listening on %s (%d rules)", cfg.RBE.TCP.Listen, len(rbeRules))
+		observer, err = rbe.NewEngine(rbeRules, &rbe.MultiSink{Sinks: sinks})
+		if err != nil { log.Fatalf("RBE engine failed: %v", err) }
+		log.Printf("RBE engine enabled (%d rules)", len(rbeRules))
 	}
 
 	var ae *accessevents.Engine
@@ -99,9 +101,7 @@ func main() {
 			if err := http.Serve(ln, mux); err != nil { log.Fatalf("access events HTTP server failed: %v", err) }
 		}()
 		log.Println("access events engine started")
-	} else {
-		log.Println("access events disabled")
-	}
+	} else { log.Println("access events disabled") }
 
 	for _, gate := range cfg.Ingress {
 		onModbus := func(conn net.Conn) {
