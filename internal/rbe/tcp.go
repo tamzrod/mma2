@@ -50,10 +50,11 @@ func (p *TCPPublisher) Publish(id uint8) {
 		return
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.closed {
+		p.mu.Unlock()
 		return
 	}
+	var dropped []net.Conn
 	for conn, queue := range p.clients {
 		select {
 		case queue <- id:
@@ -61,8 +62,13 @@ func (p *TCPPublisher) Publish(id uint8) {
 			// A gap cannot be signalled by this one-byte protocol. Force
 			// a reconnect, upon which the PPC must read its Modbus state.
 			delete(p.clients, conn)
-			_ = conn.Close()
+			close(queue)
+			dropped = append(dropped, conn)
 		}
+	}
+	p.mu.Unlock()
+	for _, conn := range dropped {
+		_ = conn.Close()
 	}
 }
 
@@ -105,7 +111,10 @@ func (p *TCPPublisher) writeLoop(conn net.Conn, queue <-chan byte) {
 	}()
 	for {
 		select {
-		case id := <-queue:
+		case id, ok := <-queue:
+			if !ok {
+				return
+			}
 			// net.Conn.Write is allowed to return a short write.
 			data := [1]byte{id}
 			n, err := conn.Write(data[:])
@@ -131,7 +140,8 @@ func (p *TCPPublisher) Close() error {
 	p.closed = true
 	close(p.done)
 	err := p.listener.Close()
-	for conn := range p.clients {
+	for conn, queue := range p.clients {
+		close(queue)
 		_ = conn.Close()
 		delete(p.clients, conn)
 	}
