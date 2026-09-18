@@ -5,9 +5,13 @@ import (
 	"bufio"
 	"log"
 	"net"
+	"sync"
+	"time"
 
 	"mma2/internal/config"
 )
+
+const acceptRetryDelay = 5 * time.Millisecond
 
 // bufferedConn ensures all reads flow through a bufio.Reader that already peeked.
 type bufferedConn struct {
@@ -22,6 +26,10 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 // Listener represents a TCP ingress gate.
 type Listener struct {
 	cfg config.IngressGate
+
+	mu     sync.Mutex
+	ln     net.Listener
+	closed bool
 }
 
 // NewListener creates a new ingress listener.
@@ -30,6 +38,8 @@ func NewListener(cfg config.IngressGate) *Listener {
 }
 
 // ListenAndServe starts the TCP listener and dispatches connections.
+// It returns nil after Close, and a non-nil error only for a failed bind
+// or a permanent accept error while the listener is still open.
 func (l *Listener) ListenAndServe(
 	onModbus func(net.Conn),
 	onRawIngest func(net.Conn),
@@ -39,16 +49,53 @@ func (l *Listener) ListenAndServe(
 		return err
 	}
 
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		_ = ln.Close()
+		return nil
+	}
+	l.ln = ln
+	l.mu.Unlock()
+
 	log.Printf("ingress %s listening on %s", l.cfg.ID, l.cfg.Listen)
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			continue
+			l.mu.Lock()
+			closed := l.closed
+			l.mu.Unlock()
+			if closed {
+				return nil
+			}
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				time.Sleep(acceptRetryDelay)
+				continue
+			}
+			return err
 		}
-
 		go l.handleConn(conn, onModbus, onRawIngest)
 	}
+}
+
+// Close stops Accept and unbinds the port. It is idempotent.
+func (l *Listener) Close() error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil
+	}
+	l.closed = true
+	if l.ln == nil {
+		return nil
+	}
+	err := l.ln.Close()
+	l.ln = nil
+	return err
 }
 
 func (l *Listener) handleConn(
@@ -67,17 +114,14 @@ func (l *Listener) handleConn(
 
 	switch proto {
 	case ProtocolModbus:
-		// Modbus is always enabled
 		onModbus(bc)
 		return
 
 	case ProtocolRawIngest:
-		// Raw ingest is always enabled
 		onRawIngest(bc)
 		return
 
 	default:
-		// Unknown protocol → close
 		conn.Close()
 	}
 }
