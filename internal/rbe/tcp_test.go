@@ -268,3 +268,115 @@ func TestTCPPublisherTransientAcceptErrorIsNotFatal(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+func waitClients(t *testing.T, p *TCPPublisher, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		p.mu.Lock()
+		n := len(p.clients)
+		p.mu.Unlock()
+		if n == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("clients=%d want %d", n, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func closeWithTimeout(t *testing.T, p *TCPPublisher) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- p.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked (likely mutex held across queue or socket close)")
+	}
+}
+
+func TestTCPPublisherCloseWithLiveSubscriberDoesNotDeadlock(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewTCPPublisher(listener, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	waitClients(t, p, 1)
+	closeWithTimeout(t, p)
+	closeWithTimeout(t, p)
+}
+
+func TestTCPPublisherOverflowThenCloseDoesNotDeadlock(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewTCPPublisher(listener, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slow.Close()
+	fast, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fast.Close()
+	waitClients(t, p, 2)
+
+	stop := make(chan struct{})
+	var drain sync.WaitGroup
+	drain.Add(1)
+	go func() {
+		defer drain.Done()
+		buf := make([]byte, 1)
+		for {
+			_ = fast.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			_, err := fast.Read(buf)
+			if err != nil {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+			}
+		}
+	}()
+
+	pubDone := make(chan struct{})
+	go func() {
+		for i := 0; i < 8; i++ {
+			p.Publish(3)
+		}
+		close(pubDone)
+	}()
+	select {
+	case <-pubDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Publish blocked during overflow")
+	}
+	close(stop)
+	drain.Wait()
+	closeWithTimeout(t, p)
+}
