@@ -46,8 +46,7 @@ func TestBuildRBERulesRejectsDuplicatesAndInvalidBounds(t *testing.T) {
 	}
 }
 
-// A rule name becomes an Influx tag; CR/LF would split one event into multiple
-// line-protocol points, so configuration must reject it before startup.
+// Rule names must stay on one line. Line breaks are rejected at startup.
 func TestBuildRBERulesRejectsRuleNameWithLineBreak(t *testing.T) {
 	for _, name := range []string{"Normal_Name", "with spaces", "a\nb", "a\rb"} {
 		cfg := validRBETestConfig()
