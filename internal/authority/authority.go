@@ -11,11 +11,12 @@ import (
 // Modbus exception codes used by access-control decisions.
 const (
 	ExceptionIllegalFunction = 0x01
-	ExceptionDeviceBusy      = 0x06
 )
 
 // Request is the minimum information needed to decide access.
 // No Modbus parsing, IO, or memory operations happen here.
+// State sealing is not evaluated here; the Modbus transport reads the
+// configured memory bit before calling Evaluate.
 type Request struct {
 	MemoryID     memorycore.MemoryID
 	SourceIP     netip.Addr
@@ -28,22 +29,17 @@ type MemoryPolicy struct {
 	Rules []*Rule
 }
 
-// Authority evaluates state sealing + memory-scoped access rules.
+// Authority evaluates memory-scoped access rules (source IP and function code).
 type Authority struct {
-	sealing *Sealing
-
 	mu       sync.RWMutex
 	policies map[memorycore.MemoryID]*MemoryPolicy
 }
 
 func New() *Authority {
 	return &Authority{
-		sealing:  NewSealing(),
 		policies: make(map[memorycore.MemoryID]*MemoryPolicy),
 	}
 }
-
-func (a *Authority) Sealing() *Sealing { return a.sealing }
 
 // SetMemoryPolicy replaces the policy for a memory.
 // Intended for startup config load.
@@ -54,16 +50,11 @@ func (a *Authority) SetMemoryPolicy(mid memorycore.MemoryID, p *MemoryPolicy) {
 }
 
 // Evaluate implements the locked order:
-// 1) state sealing check
-// 2) access rules top-down -> first match wins
-// 3) default deny if no match or no policy
+// 1) access rules top-down -> first match wins
+// 2) default deny if no match or no policy
+//
+// Coil state sealing is enforced by the Modbus transport before Evaluate.
 func (a *Authority) Evaluate(req Request) Decision {
-	// Step 1: state sealing
-	if a.sealing.IsSealed(req.MemoryID) {
-		return Deny(ExceptionDeviceBusy, "state sealing enabled")
-	}
-
-	// Step 2: rules
 	a.mu.RLock()
 	p := a.policies[req.MemoryID]
 	a.mu.RUnlock()
