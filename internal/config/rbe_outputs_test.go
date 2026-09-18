@@ -2,15 +2,21 @@ package config
 
 import "testing"
 
-func TestRBEInfluxOnlyIsSupported(t *testing.T) {
+func TestRBEInfluxOnlyIsRejected(t *testing.T) {
 	cfg := validRBETestConfig()
 	cfg.RBE.TCP = nil
-	cfg.RBE.Influx = &NotifyInfluxConfig{
-		URL: "http://127.0.0.1:8086", Token: "test", Org: "mma", Bucket: "events",
+	cfg.RBE.Influx = &yamlRejectedInflux{}
+	if _, err := BuildRBERules(cfg); err == nil {
+		t.Fatal("influx-only RBE unexpectedly accepted")
 	}
-	rules, err := BuildRBERules(cfg)
-	if err != nil { t.Fatal(err) }
-	if len(rules) != 1 || rules[0].ID != 1 { t.Fatalf("unexpected rules: %+v", rules) }
+}
+
+func TestRBERequiresTCP(t *testing.T) {
+	cfg := validRBETestConfig()
+	cfg.RBE.TCP = nil
+	if _, err := BuildRBERules(cfg); err == nil {
+		t.Fatal("RBE without tcp unexpectedly accepted")
+	}
 }
 
 func TestRBEDisallowsLegacyNotifyOnOtherUnit(t *testing.T) {
@@ -20,5 +26,22 @@ func TestRBEDisallowsLegacyNotifyOnOtherUnit(t *testing.T) {
 	})
 	if _, err := BuildRBERules(cfg); err == nil {
 		t.Fatal("legacy notify unexpectedly accepted with global RBE")
+	}
+}
+
+func TestValidateRejectsLeftoverNotifyInflux(t *testing.T) {
+	cfg := validRBETestConfig()
+	cfg.RBE = nil
+	cfg.Notify = &NotifyOutputConfig{Influx: &yamlRejectedInflux{}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("notify.influx unexpectedly accepted")
+	}
+}
+
+func TestValidateRejectsLeftoverRBEInflux(t *testing.T) {
+	cfg := validRBETestConfig()
+	cfg.RBE.Influx = &yamlRejectedInflux{}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("rbe.influx unexpectedly accepted")
 	}
 }
