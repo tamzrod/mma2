@@ -64,7 +64,7 @@ func (p *TCPPublisher) Publish(id uint8) {
 		case queue <- id:
 		default:
 			// A gap cannot be signalled by this one-byte protocol. Force
-			// a reconnect, upon which the PPC must read its Modbus state.
+			// a reconnect, upon which the subscriber must read Modbus state.
 			delete(p.clients, conn)
 			close(queue)
 			dropped = append(dropped, conn)

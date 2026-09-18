@@ -72,7 +72,7 @@ func (s *InfluxSink) Publish(id uint8) {
 	select {
 	case s.queue <- id:
 	default:
-		// Observability may drop events; the PPC TCP path must not wait.
+		// Observability may drop events; the TCP trigger path must not wait.
 	}
 }
 
