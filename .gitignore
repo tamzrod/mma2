@@ -1,5 +1,6 @@
 # binaries
 *.exe
+/mma2
 
 # Go build artifacts
 /bin/
