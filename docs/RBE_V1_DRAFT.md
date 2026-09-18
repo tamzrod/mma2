@@ -1,6 +1,6 @@
 # RBE v1 implementation draft (NOT LOCKED)
 
-Branch: `feature/rbe-tcp-v1`. This document describes in-progress code and does not supersede the current locked notify contract on `main`.
+On `main` as of 2026-09-18 (PR #18 functional checkpoint, PR #19 follow-up). This document describes in-progress code and does not supersede the current locked notify contract.
 
 ## Purpose
 
