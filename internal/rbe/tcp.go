@@ -19,13 +19,18 @@ const acceptRetryDelay = 5 * time.Millisecond
 // If its bounded queue fills, the subscriber is disconnected so it can
 // reconnect and reconcile rather than silently continue with stale state.
 type TCPPublisher struct {
-	listener net.Listener
+	listener  net.Listener
 	queueSize int
 
 	mu      sync.Mutex
 	clients map[net.Conn]chan byte
 	closed  bool
 	done    chan struct{}
+}
+
+type dropClient struct {
+	conn  net.Conn
+	queue chan byte
 }
 
 // NewTCPPublisher takes ownership of an already-bound listener, allowing
@@ -58,7 +63,7 @@ func (p *TCPPublisher) Publish(id uint8) {
 		p.mu.Unlock()
 		return
 	}
-	var dropped []net.Conn
+	var dropped []dropClient
 	for conn, queue := range p.clients {
 		select {
 		case queue <- id:
@@ -66,13 +71,13 @@ func (p *TCPPublisher) Publish(id uint8) {
 			// A gap cannot be signalled by this one-byte protocol. Force
 			// a reconnect, upon which the subscriber must read Modbus state.
 			delete(p.clients, conn)
-			close(queue)
-			dropped = append(dropped, conn)
+			dropped = append(dropped, dropClient{conn: conn, queue: queue})
 		}
 	}
 	p.mu.Unlock()
-	for _, conn := range dropped {
-		_ = conn.Close()
+	for _, d := range dropped {
+		close(d.queue)
+		_ = d.conn.Close()
 	}
 }
 
@@ -147,17 +152,24 @@ func (p *TCPPublisher) Close() error {
 		return nil
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.closed {
+		p.mu.Unlock()
 		return nil
 	}
 	p.closed = true
 	close(p.done)
-	err := p.listener.Close()
+	dropped := make([]dropClient, 0, len(p.clients))
 	for conn, queue := range p.clients {
-		close(queue)
-		_ = conn.Close()
+		dropped = append(dropped, dropClient{conn: conn, queue: queue})
 		delete(p.clients, conn)
+	}
+	ln := p.listener
+	p.mu.Unlock()
+
+	err := ln.Close()
+	for _, d := range dropped {
+		close(d.queue)
+		_ = d.conn.Close()
 	}
 	return err
 }
