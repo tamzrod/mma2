@@ -16,6 +16,9 @@ func BuildRBERules(cfg *Config) ([]rbe.Rule, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("rbe: config is nil")
 	}
+	if err := rejectRemovedInflux(cfg); err != nil {
+		return nil, err
+	}
 	if cfg.RBE == nil {
 		for li, listener := range cfg.Ingress {
 			for mi, mem := range listener.Memory {
@@ -25,9 +28,6 @@ func BuildRBERules(cfg *Config) ([]rbe.Rule, error) {
 			}
 		}
 		return nil, nil
-	}
-	if cfg.RBE.Influx != nil {
-		return nil, fmt.Errorf("rbe.influx is not supported; subscribe to rbe.tcp from an external process")
 	}
 	if cfg.RBE.TCP == nil {
 		return nil, fmt.Errorf("rbe.tcp.listen is required")
