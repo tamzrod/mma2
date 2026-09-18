@@ -22,6 +22,18 @@ Global `rbe.tcp.listen` is the MMA TCP server bind address (for example `:9001`)
 - A slow client whose queue fills is disconnected; it must reconnect and reconcile via Modbus. Client reads current Modbus state AFTER EVERY connection before trusting event notifications.
 - No sequence/gap detection is possible in one byte. Keep periodic Modbus reconciliation and application-specific stale-state handling. The TCP channel is not a protection relay.
 
+### RuleID 0x00 — DECIDED 2026-09-18
+
+`0x00` is reserved. It is not a valid RuleID and must never appear as an event.
+
+- YAML `id` must be 1..255. Config validation rejects 0 and values above 255.
+- `rbe.NewEngine` rejects a rule whose ID is 0.
+- TCP `Publish(0)` and Influx `Publish(0)` are no-ops and put nothing on the wire or in line protocol.
+- A subscriber that receives `0x00` has seen a protocol or transport fault, not a rule. Reconnect and reconcile over Modbus.
+- `0x00` is not a gap, heartbeat, or end-of-stream marker. Overflow disconnects the slow subscriber instead of encoding a sentinel.
+
+This closes the earlier discrepancy with the request that all 256 byte values be legal IDs. The rest of this draft remains NOT LOCKED.
+
 ## Change detection and state sealing
 
 - Emit one event per matching independent rule if at least one raw cell in the write/rule intersection changed.
