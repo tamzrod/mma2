@@ -5,32 +5,27 @@ import "mma2/internal/accessevents"
 
 // Config is the root configuration for MMA2.
 type Config struct {
-	Ingress []IngressGate `yaml:"listeners"`
-	Memory  MemoryConfig  `yaml:"memory"`
-	Notify *NotifyOutputConfig `yaml:"notify"` // legacy until RBE cutover
-	RBE *RBEOutputConfig `yaml:"rbe"`
+	Ingress      []IngressGate                    `yaml:"listeners"`
+	Memory       MemoryConfig                     `yaml:"memory"`
+	Notify       *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
+	RBE          *RBEOutputConfig                 `yaml:"rbe"`
 	AccessEvents *accessevents.AccessEventsConfig `yaml:"access_events"`
-	Debug bool `yaml:"debug"`
+	Debug        bool                             `yaml:"debug"`
 }
 
 // Legacy write-only notification output.
+// Influx is no longer part of MMA; a leftover influx block is rejected at load.
 type NotifyOutputConfig struct {
-	Influx *NotifyInfluxConfig `yaml:"influx"`
+	Influx *yamlRejectedInflux `yaml:"influx"`
 }
 
-type NotifyInfluxConfig struct {
-	URL         string `yaml:"url"`
-	Token       string `yaml:"token"`
-	Org         string `yaml:"org"`
-	Bucket      string `yaml:"bucket"`
-	Measurement string `yaml:"measurement"`
-}
+// yamlRejectedInflux exists only so leftover YAML keys are detected and rejected.
+type yamlRejectedInflux struct{}
 
-// RBEOutputConfig defines global output adapters. A single memory change
-// can fan out independently to TCP and Influx.
+// RBEOutputConfig is the global RBE output. TCP is required. Influx is rejected.
 type RBEOutputConfig struct {
-	TCP *RBETCPConfig `yaml:"tcp"`
-	Influx *NotifyInfluxConfig `yaml:"influx"`
+	TCP    *RBETCPConfig       `yaml:"tcp"`
+	Influx *yamlRejectedInflux `yaml:"influx"`
 }
 
 type RBETCPConfig struct {
@@ -55,8 +50,8 @@ type RBERuleConfig struct {
 
 // IngressGate owns a TCP ingress listener.
 type IngressGate struct {
-	ID     string `yaml:"id"`
-	Listen string `yaml:"listen"`
+	ID     string             `yaml:"id"`
+	Listen string             `yaml:"listen"`
 	Memory []MemoryDefinition `yaml:"memory"`
 }
 
@@ -66,16 +61,16 @@ type MemoryConfig struct {
 }
 
 type MemoryDefinition struct {
-	Port   uint16 `yaml:"port"`
-	UnitID uint16 `yaml:"unit_id"`
-	Coils          Area `yaml:"coils"`
-	DiscreteInputs Area `yaml:"discrete_inputs"`
-	HoldingRegs    Area `yaml:"holding_registers"`
-	InputRegs      Area `yaml:"input_registers"`
-	Notify       *NotifyConfig       `yaml:"notify"` // legacy
-	RBE          *RBERulesConfig     `yaml:"rbe"`
-	StateSealing *StateSealingConfig `yaml:"state_sealing"`
-	Policy       *MemoryPolicyConfig `yaml:"policy"`
+	Port           uint16              `yaml:"port"`
+	UnitID         uint16              `yaml:"unit_id"`
+	Coils          Area                `yaml:"coils"`
+	DiscreteInputs Area                `yaml:"discrete_inputs"`
+	HoldingRegs    Area                `yaml:"holding_registers"`
+	InputRegs      Area                `yaml:"input_registers"`
+	Notify         *NotifyConfig       `yaml:"notify"` // legacy
+	RBE            *RBERulesConfig     `yaml:"rbe"`
+	StateSealing   *StateSealingConfig `yaml:"state_sealing"`
+	Policy         *MemoryPolicyConfig `yaml:"policy"`
 }
 
 type Area struct {
@@ -111,7 +106,7 @@ type MemoryPolicyConfig struct {
 }
 
 type PolicyRuleConfig struct {
-	ID string `yaml:"id"`
+	ID       string   `yaml:"id"`
 	SourceIP []string `yaml:"source_ip"`
-	AllowFC []uint8 `yaml:"allow_fc"`
+	AllowFC  []uint8  `yaml:"allow_fc"`
 }
