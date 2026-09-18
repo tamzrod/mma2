@@ -63,7 +63,7 @@ listeners:
       # ========================================================
       # Purpose:
       # - Setpoints
-      # - PPC / EMS interfaces
+      # - External controllers / EMS (a plant controller is one example)
       #
       # Behavior:
       # - Read-only for LAN
