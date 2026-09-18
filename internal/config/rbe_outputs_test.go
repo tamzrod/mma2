@@ -29,19 +29,19 @@ func TestRBEDisallowsLegacyNotifyOnOtherUnit(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsLeftoverNotifyInflux(t *testing.T) {
+func TestLeftoverNotifyInfluxIsRejected(t *testing.T) {
 	cfg := validRBETestConfig()
 	cfg.RBE = nil
 	cfg.Notify = &NotifyOutputConfig{Influx: &yamlRejectedInflux{}}
-	if err := Validate(cfg); err == nil {
+	if _, err := BuildRBERules(cfg); err == nil {
 		t.Fatal("notify.influx unexpectedly accepted")
 	}
 }
 
-func TestValidateRejectsLeftoverRBEInflux(t *testing.T) {
+func TestLeftoverRBEInfluxIsRejected(t *testing.T) {
 	cfg := validRBETestConfig()
 	cfg.RBE.Influx = &yamlRejectedInflux{}
-	if err := Validate(cfg); err == nil {
+	if _, err := BuildRBERules(cfg); err == nil {
 		t.Fatal("rbe.influx unexpectedly accepted")
 	}
 }
