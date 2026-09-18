@@ -69,15 +69,8 @@ func main() {
 			log.Fatalf("notify registry build failed: %v", err)
 		}
 		if registry != nil {
-			var adapter notify.Adapter
-			if cfg.Notify != nil && cfg.Notify.Influx != nil {
-				c := cfg.Notify.Influx
-				adapter = notify.NewInfluxAdapter(c.URL, c.Org, c.Bucket, c.Token, c.Measurement)
-				log.Println("notify engine enabled (influx adapter)")
-			} else {
-				adapter = notify.NewStdoutAdapter()
-				log.Println("notify engine enabled (stdout adapter)")
-			}
+			adapter := notify.NewStdoutAdapter()
+			log.Println("notify engine enabled (stdout adapter)")
 			notifier = notify.NewEngine(registry, adapter, 256)
 		} else {
 			log.Println("notify engine disabled (no rules)")
@@ -100,16 +93,6 @@ func main() {
 			sinks = append(sinks, publisher)
 			shutdown = append(shutdown, func() { _ = publisher.Close() })
 			log.Printf("RBE TCP listening on %s", cfg.RBE.TCP.Listen)
-		}
-		if cfg.RBE.Influx != nil {
-			c := cfg.RBE.Influx
-			influx, err := rbe.NewInfluxSink(c.URL, c.Org, c.Bucket, c.Token, c.Measurement, rbeRules)
-			if err != nil {
-				log.Fatalf("RBE Influx configuration failed: %v", err)
-			}
-			sinks = append(sinks, influx)
-			shutdown = append(shutdown, influx.Close)
-			log.Println("RBE Influx output enabled")
 		}
 		observer, err = rbe.NewEngine(rbeRules, &rbe.MultiSink{Sinks: sinks})
 		if err != nil {
