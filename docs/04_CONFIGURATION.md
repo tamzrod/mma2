@@ -239,22 +239,10 @@ Fields:
 
 ## Notification Output Configuration
 
-Output adapters are optional globally.
+Influx is not part of MMA. A leftover `notify.influx` or `rbe.influx` block fails startup.
 
-```yaml
-notify:
-  influx:
-    url: "http://localhost:8086"
-    org: "mma"
-    bucket: "events"
-    token: "mytoken"
-    measurement: "mma_notify"
-```
-
-**Behavior:**
-- If `notify.influx` is configured: InfluxDB adapter is used
-- If `notify.influx` is missing: stdout adapter is used (events logged to console)
-- Influx configuration is NOT validated at startup
+Notify events (legacy configs without root `rbe`) use the in-process stdout adapter.
+Persist history from an external process that subscribes to RBE TCP or consumes notify logs.
 
 ---
 
