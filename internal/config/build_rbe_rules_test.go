@@ -8,10 +8,10 @@ import (
 func validRBETestConfig() *Config {
 	return &Config{
 		RBE: &RBEOutputConfig{TCP: &RBETCPConfig{Listen: "127.0.0.1:9001"}},
-		Ingress: []IngressGate{{ID: "ppc", Listen: ":502", Memory: []MemoryDefinition{{
+		Ingress: []IngressGate{{ID: "lab", Listen: ":502", Memory: []MemoryDefinition{{
 			UnitID: 1,
 			InputRegs: Area{Start: 0, Count: 100},
-			RBE: &RBERulesConfig{InputRegs: []RBERuleConfig{{ID: 1, Name: "Active_Power_Setpoint", Start: 2, Count: 2}}},
+			RBE: &RBERulesConfig{InputRegs: []RBERuleConfig{{ID: 1, Name: "Watched_IR_2_3", Start: 2, Count: 2}}},
 		}}}},
 	}
 }

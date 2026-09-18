@@ -3,7 +3,7 @@ rbe:
     listen: "127.0.0.1:19001"
 
 listeners:
-  - id: ppc
+  - id: lab
     listen: "127.0.0.1:15020"
     memory:
       - unit_id: 1
@@ -26,10 +26,10 @@ listeners:
         rbe:
           input_registers:
             - id: 1
-              name: Active_Power_Setpoint
+              name: Watched_IR_2_3
               start: 2
               count: 2
             - id: 2
-              name: Reactive_Power_Setpoint
+              name: Watched_IR_4_5
               start: 4
               count: 2

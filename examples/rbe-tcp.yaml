@@ -1,21 +1,26 @@
-# RBE TCP v1 demonstration on the feature branch.
-# MMA2 listens on :9001; PPC connects, reads one RuleID byte per event,
-# and immediately reads the actual value via Modbus TCP on :502.
+# RBE TCP v1 example.
+# MMA2 listens for RBE subscribers on :9001. Any number of TCP clients may
+# connect. Each event is one RuleID byte. Values are not on this socket;
+# a subscriber that needs the current value reads it over Modbus on :502.
+# A plant controller is one possible subscriber, not the protocol.
 # Both ports must be firewalled to trusted control-network peers.
-# A new TCP connection is NOT a snapshot; PPC must read Modbus after connect.
+# A new TCP connection is not a snapshot; read Modbus after every connect.
 
 rbe:
   tcp:
     listen: ":9001"
 
 listeners:
-  - id: ppc
+  - id: lab
     listen: ":502"
     memory:
       - unit_id: 1
         coils:
           start: 0
           count: 1
+        holding_registers:
+          start: 0
+          count: 100
         input_registers:
           start: 0
           count: 100
@@ -24,25 +29,28 @@ listeners:
           area: coil
           address: 0
           exception: 0x06
-        # Replace this example localhost rule with your real PPC client IP.
         policy:
           rules:
-            - id: ppc_local
+            - id: local
               source_ip: ["127.0.0.1"]
-              allow_fc: [1, 2, 3, 4]
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
         rbe:
-          input_registers:
+          holding_registers:
             - id: 1
-              name: Active_Power_Setpoint
+              name: Watched_HR_10
+              start: 10
+              count: 1
+          input_registers:
+            - id: 2
+              name: Watched_IR_2_3
               start: 2
               count: 2
-            - id: 2
-              name: Reactive_Power_Setpoint
+            - id: 3
+              name: Watched_IR_4_5
               start: 4
               count: 2
 
 # Raw Ingest can populate input registers while sealed. No RBE events are
 # sent until a later write begins in an unsealed state. Unseal via Raw Ingest
 # coil 0 := 1; that unsealing write never generates a catch-up event.
-# Each setpoint spanning two registers should be written in one Raw Ingest
-# operation, not as two independent half-value writes.
+# A multi-register watched range should be written in one operation.
