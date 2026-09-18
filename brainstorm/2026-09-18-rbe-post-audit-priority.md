@@ -7,13 +7,13 @@ Scope: follow-up after RBE TCP v1 functional checkpoint (`feature/rbe-tcp-v1` @ 
 
 Related: issue #17, `docs/RBE_V1_DRAFT.md`, `docs/RBE_V1_TEST_REPORT.md`.
 
-**Current item:** 1 only.
+**Current item:** 2 (`TCPPublisher` lock).
 
 ## Sequence
 
 | # | Job | Why this order | Effort | Done when |
 |---|---|---|---|---|
-| 1 | Lock RuleID `0x00` | One decision. If left open, later tests/docs/PPC clients are wrong. Highest leverage, almost no code. | Small | Written rule: `0x00` is reserved **or** legal. Engine, sinks, validator, draft, tests, and issue #17 all say the same thing. |
+| 1 | Lock RuleID `0x00` | **DONE 2026-09-18 — option A.** `0x00` reserved. Legal IDs `1..255`. Draft § RuleID 0x00; issue #17 checked. No runtime change. | Small | Written rule: `0x00` is reserved **or** legal. Engine, sinks, validator, draft, tests, and issue #17 all say the same thing. |
 | 2 | Fix `TCPPublisher` lock | Real deadlock on overflow/Close. Overflow is the designed slow-PPC path. | Small | Close and overflow no longer hold `mu` while closing queues. Contention test passes. |
 | 3 | Stop shipping the `mma2` binary | 9 MB blob on `main`. `.gitignore` misses `./mma2`. Cheap hygiene. | Tiny | `mma2` untracked, `.gitignore` has `/mma2`, Dockerfile still builds from `cmd/mma2`. |
 | 4 | Add CI: `vet` + `test` + `-race` + `test/rbe_e2e` | Tests already exist. CI is what keeps 1–2 from regressing. | Small | Push runs those four; job fails on non-zero. |
@@ -34,8 +34,6 @@ Related: issue #17, `docs/RBE_V1_DRAFT.md`, `docs/RBE_V1_TEST_REPORT.md`.
 - live Influx soak
 - version bump past `2.0.2`
 
-## Item 1 — the only open choice
+## Item 1 — closed
 
-Keep `0x00` reserved (current code; one-byte stream cannot signal a gap) **or** allow it as a normal RuleID (original request).
-
-Pick one. That is the only work for this step.
+Decision A, 2026-09-18: `0x00` is reserved. Not a RuleID, not a gap/heartbeat. Config/engine reject 0; sinks drop `Publish(0)`. Recorded in `docs/RBE_V1_DRAFT.md` and issue #17.
