@@ -185,17 +185,3 @@ root:
               name:
                 type: string
                 unique: sibling
-
-        influx:
-          type: object
-          properties:
-            url:
-              type: string
-            token:
-              type: string
-            org:
-              type: string
-            bucket:
-              type: string
-            measurement:
-              type: string
