@@ -1,0 +1,35 @@
+rbe:
+  tcp:
+    listen: "127.0.0.1:19001"
+
+listeners:
+  - id: ppc
+    listen: "127.0.0.1:15020"
+    memory:
+      - unit_id: 1
+        coils:
+          start: 0
+          count: 8
+        input_registers:
+          start: 0
+          count: 16
+        state_sealing:
+          enabled: true
+          area: coil
+          address: 0
+          exception: 0x06
+        policy:
+          rules:
+            - id: local
+              source_ip: ["127.0.0.1"]
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
+        rbe:
+          input_registers:
+            - id: 1
+              name: Active_Power_Setpoint
+              start: 2
+              count: 2
+            - id: 2
+              name: Reactive_Power_Setpoint
+              start: 4
+              count: 2

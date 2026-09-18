@@ -10,24 +10,18 @@ import (
 
 	"mma2/internal/memorycore"
 	"mma2/internal/notify"
+	"mma2/internal/rbe"
 )
 
-// HandleConn handles a single Raw Ingest TCP connection.
-// It writes exactly 1 byte per packet:
-//
-//	0x00 = OK
-//	0x10 = INVALID_MAGIC
-//	0x11 = INVALID_VERSION
-//	0x12 = INVALID_AREA
-//	0x13 = INVALID_COUNT
-//	0x14 = INVALID_LENGTH
-//	0x20 = MEMORY_NOT_FOUND
-//	0x21 = OUT_OF_BOUNDS
-//	0x30 = INTERNAL_ERROR
-//
-// Notification is optional.
-// It is emitted ONLY after successful write commit.
+// HandleConn retains the original public entry point for existing callers.
 func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine) {
+	HandleConnWithRBE(conn, store, notifier, nil)
+}
+
+// HandleConnWithRBE handles Raw Ingest. RBE observes the committed write,
+// including input registers and discrete inputs, without changing the Raw
+// Ingest response-code contract. Notification output never affects the ACK.
+func HandleConnWithRBE(conn net.Conn, store *memorycore.Store, notifier *notify.Engine, observer *rbe.Engine) {
 	defer conn.Close()
 
 	localAddr, ok := conn.LocalAddr().(*net.TCPAddr)
@@ -54,11 +48,7 @@ func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine)
 			return
 		}
 
-		memID := memorycore.MemoryID{
-			Port:   pkt.Port,
-			UnitID: pkt.UnitID,
-		}
-
+		memID := memorycore.MemoryID{Port: pkt.Port, UnitID: pkt.UnitID}
 		mem, err := store.MustGet(memID)
 		if err != nil {
 			_, _ = conn.Write([]byte{RespMemoryNotFound})
@@ -66,37 +56,37 @@ func HandleConn(conn net.Conn, store *memorycore.Store, notifier *notify.Engine)
 		}
 
 		if pkt.Area.IsBitArea() {
-			if err := mem.WriteBits(pkt.Area, pkt.Address, pkt.Count, pkt.Payload); err != nil {
-				_, _ = conn.Write([]byte{writeErrCode(err)})
-				return
+			if observer != nil {
+				err = observer.WriteBits(mem, memID, pkt.Area, pkt.Address, pkt.Count, pkt.Payload)
+			} else {
+				err = mem.WriteBits(pkt.Area, pkt.Address, pkt.Count, pkt.Payload)
 			}
 		} else if pkt.Area.IsRegArea() {
-			if err := mem.WriteRegs(pkt.Area, pkt.Address, pkt.Count, pkt.Payload); err != nil {
-				_, _ = conn.Write([]byte{writeErrCode(err)})
-				return
+			if observer != nil {
+				err = observer.WriteRegs(mem, memID, pkt.Area, pkt.Address, pkt.Count, pkt.Payload)
+			} else {
+				err = mem.WriteRegs(pkt.Area, pkt.Address, pkt.Count, pkt.Payload)
 			}
 		} else {
 			_, _ = conn.Write([]byte{RespInternalError})
 			return
 		}
+		if err != nil {
+			_, _ = conn.Write([]byte{writeErrCode(err)})
+			return
+		}
 
-		// Successful write → optional notify
+		// Legacy write-only notify, retained only for non-RBE configurations.
 		if notifier != nil {
 			area, ok := mapMemorycoreAreaToNotify(pkt.Area)
 			if ok {
 				notifier.OnWrite(notify.Event{
-					Port:      pkt.Port,
-					UnitID:    pkt.UnitID,
-					Area:      area,
-					Start:     pkt.Address,
-					Count:     pkt.Count,
-					Source:    notify.SourceRaw,
-					SourceIP:  srcIPStr,
-					Timestamp: time.Now(),
+					Port: pkt.Port, UnitID: pkt.UnitID, Area: area,
+					Start: pkt.Address, Count: pkt.Count, Source: notify.SourceRaw,
+					SourceIP: srcIPStr, Timestamp: time.Now(),
 				})
 			}
 		}
-
 		_, _ = conn.Write([]byte{RespOK})
 	}
 }
@@ -120,8 +110,7 @@ func decodeErrCode(err error) byte {
 
 func writeErrCode(err error) byte {
 	switch {
-	case errors.Is(err, memorycore.ErrOutOfBounds),
-		errors.Is(err, memorycore.ErrStartOverflow):
+	case errors.Is(err, memorycore.ErrOutOfBounds), errors.Is(err, memorycore.ErrStartOverflow):
 		return RespOutOfBounds
 	default:
 		return RespInternalError
