@@ -4,13 +4,13 @@ On `main` as of 2026-09-18 (PR #18 functional checkpoint, PR #19 follow-up). Thi
 
 ## Purpose
 
-Replace write-only notify with change-only RBE. RBE = trigger; Modbus = value. Memory remains authoritative. Neither TCP nor Influx carries old/new/scaled register or coil values.
+Replace write-only notify with change-only RBE. RBE = trigger; Modbus = value. Memory remains authoritative. TCP does not carry old/new/scaled register or coil values. Influx is not part of MMA.
 
 MMA2 is a memory appliance. RBE TCP is a generic change-notification socket. Any number of subscribers may connect. A plant controller is one possible subscriber, not the protocol and not the product.
 
 ## Configuration
 
-Global `rbe.tcp.listen` is the MMA TCP server bind address (for example `:9001`). Subscribers are TCP clients. Optional `rbe.influx` accepts `url`, `token`, `org`, `bucket`, `measurement`; the measurement defaults to `mma_rbe`. At least one output must exist. Rules are under `listeners[].memory[].rbe.<area>`; each has `id`, `name`, `start`, and `count`. IDs are globally unique in 1..255 and rule ranges must be contained in allocated memory. Legacy `notify` and `rbe` must not coexist in one configuration. See `examples/rbe-tcp.yaml`.
+Global `rbe.tcp.listen` is required when `rbe` is present (for example `:9001`). Subscribers are TCP clients. `rbe.influx` is rejected. Rules are under `listeners[].memory[].rbe.<area>`; each has `id`, `name`, `start`, and `count`. IDs are globally unique in 1..255 and rule ranges must be contained in allocated memory. Legacy `notify` and `rbe` must not coexist in one configuration. See `examples/rbe-tcp.yaml`.
 
 ## TCP v1 wire contract
 
@@ -30,7 +30,7 @@ Global `rbe.tcp.listen` is the MMA TCP server bind address (for example `:9001`)
 
 - YAML `id` must be 1..255. Config validation rejects 0 and values above 255.
 - `rbe.NewEngine` rejects a rule whose ID is 0.
-- TCP `Publish(0)` and Influx `Publish(0)` are no-ops and put nothing on the wire or in line protocol.
+- TCP `Publish(0)` is a no-op and puts nothing on the wire.
 - A subscriber that receives `0x00` has seen a protocol or transport fault, not a rule. Reconnect and reconcile over Modbus.
 - `0x00` is not a gap, heartbeat, or end-of-stream marker. Overflow disconnects the slow subscriber instead of encoding a sentinel.
 
@@ -48,8 +48,8 @@ This closes the earlier discrepancy with the request that all 256 byte values be
 
 ## Outputs
 
-TCP Publish enqueues without network IO on memory-write path, disconnecting individual slow subscribers. Optional Influx Publish uses its own bounded queue and asynchronous HTTP writer; Influx failure cannot block TCP or memory writes. Influx records only event metadata (rule ID/name, memory identity/area, start/count, host timestamp).
+TCP Publish enqueues without network IO on the memory-write path, disconnecting individual slow subscribers. History stores are external: subscribe to RBE TCP from another process.
 
 ## Cutover and release gates
 
-Existing notify remains for configurations without root `rbe` during development. Do not remove the locked notify document until the replacement is reviewed and verified. The implementation needs a complete `go test ./...` and race test, end-to-end Raw Ingest/Modbus/TCP/Influx integration tests, concurrent-write and seal transition tests, connection/overflow tests, and measured end-to-end p95/p99 subscriber trigger-to-read latency before production use. There are no measured latency guarantees in this draft.
+Existing notify remains for configurations without root `rbe` during development. Do not remove the locked notify document until the replacement is reviewed and verified. The implementation needs a complete `go test ./...` and race test, end-to-end Raw Ingest/Modbus/TCP integration tests, concurrent-write and seal transition tests, connection/overflow tests, and measured end-to-end p95/p99 subscriber trigger-to-read latency before production use. There are no measured latency guarantees in this draft.
