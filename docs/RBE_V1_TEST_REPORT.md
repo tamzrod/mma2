@@ -59,22 +59,23 @@ A negative control (rule 1 moved off the tested range) makes the harness report
 `FAIL - rule 1 event missing`, confirming it detects wrong results rather than
 always passing. That closes the earlier report's open item (3).
 
-No measured PPC trigger-to-read p95/p99 numbers were collected. The draft
-explicitly forbids inventing latency guarantees; there is no plant-like path in
-this environment.
+No measured subscriber trigger-to-read p95/p99 numbers were collected. The draft
+explicitly forbids inventing latency guarantees; there is no application-like
+path in this environment. One lab used a plant controller and Node-RED as
+subscribers; that is evidence for those clients, not a definition of RBE.
 
 ## Defects verified and fixed in this iteration
 
 ### 1. Influx line-protocol injection via rule name
 
-`rbe.escapeTag` escaped `\`, space, `,` and `=` but not CR/LF. A configured rule
-name such as `EVIL\ninjected line,name=x` produced a multi-line HTTP body, so
+`rbe.escapeTag` escaped `\\`, space, `,` and `=` but not CR/LF. A configured rule
+name such as `EVIL\\ninjected line,name=x` produced a multi-line HTTP body, so
 one RBE event became several line-protocol points. The measurement name was
-already validated against `" ,\r\n"`, but rule names were not.
+already validated against `" ,\\r\\n"`, but rule names were not.
 
 Fix:
 
-- `NewInfluxSink` rejects rule names containing `\r` or `\n` before the sink starts.
+- `NewInfluxSink` rejects rule names containing `\\r` or `\\n` before the sink starts.
 - `BuildRBERules` rejects such names at configuration validation, with a clear
   `listeners[...].rbe.<area>[i].name` path.
 - `escapeTag` defensively strips CR/LF so one event always serializes to one line.
@@ -128,11 +129,11 @@ remaining queues on `Close`. Regressions:
 
 1. Contract is still **NOT LOCKED**. `docs/MMA_Notification_Engine_LOCKED.md`
    must stay until review + cutover.
-2. No live PPC and no measured trigger-to-read p95/p99 latency.
+2. No measured trigger-to-read p95/p99 latency on a real subscriber path.
 3. No live InfluxDB; Influx isolation is covered by an in-process HTTP test
    server only.
-4. Do not remove legacy `notify` or merge to `main` until the contract is
-   reviewed and the latency gate is measured on a plant-like path.
+4. Do not remove legacy `notify` until the contract is reviewed and the latency
+   gate is measured on a realistic subscriber path.
 5. The e2e harness uses fixed localhost ports (15020/19001) and requires them
    to be free.
 
