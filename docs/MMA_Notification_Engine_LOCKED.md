@@ -138,33 +138,11 @@ Not protocol time.
 
 ------------------------------------------------------------------------
 
-## 9. Influx Line Protocol Output
+## 9. Output
 
-Measurement:
+MMA does not write Influx. Notify events stay in-process (stdout adapter).
 
-    mma_notify
-
-Tags:
-
--   port\
--   unit\
--   area\
--   source\
--   src_ip\
--   name (optional)
-
-Fields:
-
--   start\
--   count
-
-Example (named rule):
-
-    mma_notify,port=502,unit=1,area=holding,source=modbus,src_ip=192.168.1.50,name=active_power_setpoint start=300i,count=1i 1700000000000000000
-
-Example (unnamed rule):
-
-    mma_notify,port=502,unit=1,area=holding,source=modbus,src_ip=192.168.1.50 start=400i,count=2i 1700000005000000000
+An external process may persist the same fields (port, unit, area, source, src_ip, name, start, count, commit timestamp) to Influx or any other store.
 
 ------------------------------------------------------------------------
 
@@ -179,8 +157,7 @@ Notification is NOT:
 -   A control enforcement mechanism\
 -   A historian
 
-Change detection must be done externally (e.g., via delta query in
-Influx).
+Change detection must be done externally.
 
 ------------------------------------------------------------------------
 
