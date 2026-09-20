@@ -33,9 +33,13 @@ func payloadLen(area memorycore.Area, count uint16) (int, error) {
 }
 
 // DecodeOne reads exactly one raw-ingest packet.
+// A clean EOF before a new header ends the stream; an incomplete frame is invalid.
 func DecodeOne(r io.Reader, port uint16) (*Packet, error) {
 	var hdr [headerLen]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, ErrInvalidLength
+		}
 		return nil, err
 	}
 
@@ -58,7 +62,7 @@ func DecodeOne(r io.Reader, port uint16) (*Packet, error) {
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		if err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, ErrInvalidLength
 		}
 		return nil, err
