@@ -8,7 +8,7 @@ func main(){
  fmt.Println("WARNING: run only against isolated test MMA2; FC3 holding register 0 quantity 1")
  run(*addr,byte(*unit),*clients,*warmup,nil)
  results:=make(chan sample,4096);var lat []float64;errors:=0;done:=make(chan struct{})
- go func(){for s:=range results{if s.err!=nil{errors++}else{lat=append(lat,float64(s.lat.Nanoseconds())/1e6)}};close(done)}()
+ go func(){for s:=range results{if s.err!=nil{errors++}else{lat=append(lat,float64(s.latency.Nanoseconds())/1e6)}};close(done)}()
  start:=time.Now();run(*addr,byte(*unit),*clients,*duration,results);elapsed:=time.Since(start);close(results);<-done
  sort.Float64s(lat);pct:=func(p float64)float64{if len(lat)==0{return math.NaN()};return lat[int(math.Ceil(p*float64(len(lat))))-1]};rate:=float64(len(lat))/elapsed.Seconds()
  f,e:=os.Create(filepath.Join(*out,"summary.csv"));if e!=nil{panic(e)};w:=csv.NewWriter(f);_=w.Write([]string{"target","clients","duration_seconds","successes","errors","ops_per_second","p50_ms","p95_ms","p99_ms","go_version"});_=w.Write([]string{*addr,strconv.Itoa(*clients),fmt.Sprintf("%.6f",elapsed.Seconds()),strconv.Itoa(len(lat)),strconv.Itoa(errors),fmt.Sprintf("%.3f",rate),fmt.Sprintf("%.3f",pct(.5)),fmt.Sprintf("%.3f",pct(.95)),fmt.Sprintf("%.3f",pct(.99)),runtime.Version()});w.Flush();if e=w.Error();e!=nil{panic(e)};if e=f.Close();e!=nil{panic(e)}
