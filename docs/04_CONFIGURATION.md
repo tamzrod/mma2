@@ -78,6 +78,29 @@ When `true`: those errors are emitted to the log, which is useful during integra
 
 This setting has no effect on memory behavior, authority enforcement, or steady-state operation.
 
+### Device Identity (Optional)
+
+```yaml
+device_identity:
+  vendor_name: "github.com/tamzrod"
+  product_code: "MMA2"
+  major_minor_revision: "2.0"
+```
+
+`device_identity` is a top-level, process-wide Modbus identity. It is not scoped to a listener or Unit ID.
+
+All three fields are optional independently. When omitted, the defaults are:
+
+- `vendor_name`: `github.com/tamzrod`
+- `product_code`: `MMA2`
+- `major_minor_revision`: the compiled MMA2 release version
+
+An explicitly configured value must contain 1..244 ASCII bytes. Empty, non-ASCII, or oversized values fail startup validation. Identity is resolved once at startup and is immutable.
+
+This configuration enables the identity values but does not bypass authority. Each memory policy that should permit FC43 / MEI14 reads must include function code `43` in `allow_fc`. State Sealing also applies before identity processing.
+
+See [MODBUS_DEVICE_IDENTIFICATION.md](MODBUS_DEVICE_IDENTIFICATION.md) for the complete protocol and security behavior.
+
 ### Listeners (Required)
 
 ```yaml
