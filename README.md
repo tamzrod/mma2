@@ -134,17 +134,30 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 
 FC43 / MEI 14 (`0x2B / 0x0E`) exposes the Basic ASCII objects VendorName,
 ProductCode, and MajorMinorRevision. Defaults are `github.com/tamzrod`, `MMA2`,
-and the release identifier in `internal/version/version.go`. An optional root
-configuration section overrides each field independently:
+and the release identifier in `internal/version/version.go`. An optional `fc43` section under each `listeners[].memory[]` entry overrides
+each field independently for that logical device:
 
 ```yaml
-device_identity:
-  vendor_name: "github.com/tamzrod"
-  product_code: "MMA2"
-  major_minor_revision: "2.0"
+listeners:
+  - id: modbus
+    listen: "0.0.0.0:502"
+    memory:
+      - unit_id: 1
+        fc43:
+          vendor_name: "github.com/tamzrod"
+          product_code: "MMA2"
+          major_minor_revision: "2.0"
+        holding_registers: {start: 0, count: 100}
+      - unit_id: 2
+        fc43:
+          product_code: "MMA2-Unit2"
+        holding_registers: {start: 0, count: 100}
 ```
 
-Omitted fields retain their defaults. Explicit empty values, non-ASCII values,
+Each identity is selected by `(Port, UnitID)`, where Port comes from the listener.
+Metadata stays in the Modbus layer, outside memorycore. The former root-level
+`device_identity` section is rejected; move its fields under each memory
+entry's `fc43`. Omitted sections and fields retain their defaults independently. Explicit empty values, non-ASCII values,
 and values longer than 244 bytes fail startup validation; objects are never
 truncated. Identity is fixed at startup and has no register write interface.
 

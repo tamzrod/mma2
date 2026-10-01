@@ -5,6 +5,7 @@ import "mma2/internal/accessevents"
 
 // Config is the root configuration for MMA2.
 type Config struct {
+	// DeviceIdentity is retained only to reject the removed global configuration.
 	DeviceIdentity *DeviceIdentityConfig            `yaml:"device_identity"`
 	Ingress        []IngressGate                    `yaml:"listeners"`
 	Memory         MemoryConfig                     `yaml:"memory"`
@@ -62,16 +63,17 @@ type MemoryConfig struct {
 }
 
 type MemoryDefinition struct {
-	Port           uint16              `yaml:"port"`
-	UnitID         uint16              `yaml:"unit_id"`
-	Coils          Area                `yaml:"coils"`
-	DiscreteInputs Area                `yaml:"discrete_inputs"`
-	HoldingRegs    Area                `yaml:"holding_registers"`
-	InputRegs      Area                `yaml:"input_registers"`
-	Notify         *NotifyConfig       `yaml:"notify"` // legacy
-	RBE            *RBERulesConfig     `yaml:"rbe"`
-	StateSealing   *StateSealingConfig `yaml:"state_sealing"`
-	Policy         *MemoryPolicyConfig `yaml:"policy"`
+	FC43           *DeviceIdentityConfig `yaml:"fc43"`
+	Port           uint16                `yaml:"port"`
+	UnitID         uint16                `yaml:"unit_id"`
+	Coils          Area                  `yaml:"coils"`
+	DiscreteInputs Area                  `yaml:"discrete_inputs"`
+	HoldingRegs    Area                  `yaml:"holding_registers"`
+	InputRegs      Area                  `yaml:"input_registers"`
+	Notify         *NotifyConfig         `yaml:"notify"` // legacy
+	RBE            *RBERulesConfig       `yaml:"rbe"`
+	StateSealing   *StateSealingConfig   `yaml:"state_sealing"`
+	Policy         *MemoryPolicyConfig   `yaml:"policy"`
 }
 
 type Area struct {

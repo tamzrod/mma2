@@ -40,7 +40,7 @@ func TestDeviceIdentityConnection(t *testing.T) {
 		if err != nil {
 			return
 		}
-		HandleConnWithIdentity(conn, store, auth, nil, nil, nil, false, identity)
+		HandleConnWithIdentities(conn, store, auth, nil, nil, nil, false, NewDeviceIdentities(map[memorycore.MemoryID]DeviceIdentity{mid: identity}))
 	}()
 	conn, err := net.Dial("tcp", ln.Addr().String())
 	if err != nil {
@@ -76,6 +76,10 @@ func TestDeviceIdentityConnection(t *testing.T) {
 			t.Fatalf("got %x %x want %x", header, response, want)
 		}
 	}
+	// An unknown logical device cannot inherit another device's identity, even
+	// if authority has explicitly allowed FC43 for that address.
+	auth.SetMemoryPolicy(memorycore.MemoryID{Port: port, UnitID: 99}, &authority.MemoryPolicy{Rules: []*authority.Rule{mustIdentityRule(t)}})
+	exchange(99, []byte{43, 14, 1, 0}, []byte{0xab, 2})
 	// No policy remains default-deny, including identity requests.
 	exchange(1, []byte{43, 14, 1, 0}, []byte{0xab, 1})
 	rule, err := authority.NewRule("test", []string{"127.0.0.1"}, []uint8{3, 6, 43})
@@ -90,4 +94,13 @@ func TestDeviceIdentityConnection(t *testing.T) {
 	exchange(1, []byte{3, 0, 0, 0, 1}, []byte{3, 2, 0x12, 0x34})
 	mem.SetStateSealing(memorycore.StateSealingDef{Area: memorycore.AreaCoils, Address: 0, ExceptionCode: 6})
 	exchange(1, []byte{43, 14, 1, 0}, []byte{0xab, 6})
+}
+
+func mustIdentityRule(t *testing.T) *authority.Rule {
+	t.Helper()
+	rule, err := authority.NewRule("unknown", []string{"127.0.0.1"}, []uint8{43})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rule
 }

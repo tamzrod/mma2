@@ -19,7 +19,7 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config is nil")
 	}
 
-	if _, err := BuildDeviceIdentityValues(cfg); err != nil {
+	if _, err := BuildDeviceIdentities(cfg); err != nil {
 		return err
 	}
 
