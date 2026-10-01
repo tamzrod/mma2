@@ -130,9 +130,7 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 
 ---
 
-## Archi
-
-### Modbus device identification
+## Modbus Device Identification
 
 FC43 / MEI 14 (`0x2B / 0x0E`) exposes the Basic ASCII objects VendorName,
 ProductCode, and MajorMinorRevision. Defaults are `github.com/tamzrod`, `MMA2`,
@@ -158,3 +156,5 @@ exception 2. Invalid request lengths/codes return exception 3; unsupported MEI
 types return exception 1. Existing memory sealing and per-memory authority
 checks apply: the matching policy must allow FC43 (`allow_fc: [43]`, alongside
 any other required function codes).
+
+See [docs/MODBUS_DEVICE_IDENTIFICATION.md](docs/MODBUS_DEVICE_IDENTIFICATION.md) for the complete configuration, protocol, authority, State Sealing, pagination, and exception behavior.
