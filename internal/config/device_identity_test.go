@@ -1,21 +1,24 @@
+// internal/config/device_identity_test.go
 package config
 
 import (
-	"mma2/internal/version"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mma2/internal/version"
 )
 
 func TestDeviceIdentityYAML(t *testing.T) {
 	for _, tt := range []struct {
-		name, yaml string
-		want       [3]string
+		name string
+		yaml string
+		want DeviceIdentityValues
 	}{
-		{"absent", "{}", [3]string{"github.com/tamzrod", "MMA2", version.Version}},
-		{"all", "device_identity:\n  vendor_name: Vendor\n  product_code: Product\n  major_minor_revision: '3.1'\n", [3]string{"Vendor", "Product", "3.1"}},
-		{"partial", "device_identity:\n  product_code: Custom\n", [3]string{"github.com/tamzrod", "Custom", version.Version}},
+		{"absent", "{}", DeviceIdentityValues{"github.com/tamzrod", "MMA2", version.Version}},
+		{"all", "device_identity:\n  vendor_name: Vendor\n  product_code: Product\n  major_minor_revision: '3.1'\n", DeviceIdentityValues{"Vendor", "Product", "3.1"}},
+		{"partial", "device_identity:\n  product_code: Custom\n", DeviceIdentityValues{"github.com/tamzrod", "Custom", version.Version}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
@@ -29,12 +32,12 @@ func TestDeviceIdentityYAML(t *testing.T) {
 			if err = Validate(cfg); err != nil {
 				t.Fatal(err)
 			}
-			identity, err := BuildDeviceIdentity(cfg)
+			got, err := BuildDeviceIdentityValues(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := identity.Values(); got != tt.want {
-				t.Fatalf("got %q want %q", got, tt.want)
+			if got != tt.want {
+				t.Fatalf("got %#v want %#v", got, tt.want)
 			}
 		})
 	}
