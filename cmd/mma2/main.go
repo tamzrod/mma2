@@ -41,9 +41,17 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
-	identity, err := config.BuildDeviceIdentity(cfg)
+	identityValues, err := config.BuildDeviceIdentityValues(cfg)
 	if err != nil {
 		log.Fatalf("device identity validation failed: %v", err)
+	}
+	identity, err := modbus.NewDeviceIdentity(
+		identityValues.VendorName,
+		identityValues.ProductCode,
+		identityValues.MajorMinorRevision,
+	)
+	if err != nil {
+		log.Fatalf("device identity construction failed: %v", err)
 	}
 
 	rbeRules, err := config.BuildRBERules(cfg)
