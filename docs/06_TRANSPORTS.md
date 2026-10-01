@@ -73,6 +73,7 @@ Supported function codes:
 - FC6: Write Single Register (Holding Registers only)
 - FC15: Write Multiple Coils
 - FC16: Write Multiple Registers (Holding Registers only)
+- FC43 / MEI14: Read Device Identification
 
 Restrictions:
 - no retries with intent
