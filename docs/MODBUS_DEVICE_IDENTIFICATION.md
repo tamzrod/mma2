@@ -4,24 +4,45 @@
 
 MMA 2.0 supports Modbus Encapsulated Interface Transport FC43 (0x2B), MEI type 14 (0x0E), Read Device Identification.
 
-The feature exposes the identity of the MMA appliance without adding identity data to core memory. Device identification is protocol metadata owned by the Modbus transport.
+Device identification is Modbus protocol metadata associated with a logical MMA device identified by `(Port, UnitID)`. It is configured per `listeners[].memory[]` entry.
 
-The configured identity is global to the MMA process. It is not configured per listener, per port, or per Unit ID.
+FC43 metadata is not Modbus memory data. It is owned by the Modbus/configuration edge and is not stored in or interpreted by `memorycore`.
 
 ---
 
 ## Configuration
 
-Device identity is an optional top-level YAML section:
+Device identity is configured with an optional `fc43` section under each memory entry:
 
 ```yaml
-device_identity:
-  vendor_name: "github.com/tamzrod"
-  product_code: "MMA2"
-  major_minor_revision: "2.0"
+listeners:
+  - id: modbus
+    listen: "0.0.0.0:502"
+    memory:
+      - unit_id: 1
+        fc43:
+          vendor_name: "github.com/tamzrod"
+          product_code: "MMA2"
+          major_minor_revision: "2.0"
+        holding_registers:
+          start: 0
+          count: 100
+
+      - unit_id: 2
+        fc43:
+          product_code: "MMA2-Unit2"
+        holding_registers:
+          start: 0
+          count: 100
 ```
 
-All fields are optional independently.
+The listener port and `unit_id` form the runtime identity used to select FC43 metadata:
+
+```text
+MemoryID = (Port, UnitID)
+```
+
+Each logical device may therefore expose an independent FC43 identity.
 
 | Field | Modbus object | Object ID | Default |
 |---|---|---:|---|
@@ -29,32 +50,25 @@ All fields are optional independently.
 | `product_code` | ProductCode | `0x01` | `MMA2` |
 | `major_minor_revision` | MajorMinorRevision | `0x02` | compiled MMA2 release version |
 
-If the complete `device_identity` section is absent, all compiled defaults are used.
+All fields are optional independently. If `fc43` is absent for a memory, all compiled defaults are used for that logical device. A partial override changes only fields that are present.
 
-A partial override changes only the fields that are present:
+The former root-level `device_identity` configuration is no longer supported and is rejected during validation.
 
-```yaml
-device_identity:
-  product_code: "MMA2-PPC"
-```
-
-The example above keeps the default VendorName and compiled release version.
-
-Identity is resolved once during startup and is immutable for the lifetime of the process. There is no Modbus register or runtime interface for changing it.
+Identity is resolved once during startup and remains immutable for the lifetime of the process. There is no register or runtime interface for changing it.
 
 ---
 
 ## Validation
 
-Each configured identity value must:
+Each explicitly configured identity value must:
 
-- be present as a non-empty value when explicitly configured;
+- be non-empty;
 - contain only ASCII bytes;
 - contain at most 244 bytes.
 
-Invalid identity configuration fails startup validation.
+Invalid identity configuration fails startup validation. Values are never truncated.
 
-Values are never truncated to fit a Modbus response.
+Duplicate logical identities for the same `(Port, UnitID)` are rejected.
 
 ---
 
@@ -69,7 +83,7 @@ MMA supports Read Device Identification codes 1 through 4.
 | `0x03` | Extended stream | returns the available Basic objects implemented by MMA |
 | `0x04` | Individual | returns the requested Basic object |
 
-MMA currently implements only the three mandatory Basic identification objects:
+MMA currently implements the three mandatory Basic identification objects:
 
 - Object `0x00` — VendorName
 - Object `0x01` — ProductCode
@@ -77,7 +91,7 @@ MMA currently implements only the three mandatory Basic identification objects:
 
 The conformity level returned by MMA is `0x81`: Basic identification with individual access supported.
 
-Responses preserve whole objects and are limited to the Modbus maximum PDU size of 253 bytes. If the remaining objects do not fit, `More Follows` is set and `Next Object ID` identifies the continuation point.
+Responses preserve whole objects and are limited to the Modbus maximum PDU size of 253 bytes. If remaining objects do not fit, `More Follows` is set and `Next Object ID` identifies the continuation point.
 
 For stream access (codes 1-3), an unknown starting Object ID restarts the stream at Object `0x00`.
 
@@ -92,12 +106,12 @@ A Basic stream request for Object `0x00` has this PDU:
 ```text
 2B 0E 01 00
 │  │  │  └─ Object ID 0x00
-│  │  └──── Read Device ID code 0x01 (Basic)
+│  │  └──── Read Device ID code 0x01
 │  └─────── MEI type 0x0E
 └────────── FC43 / 0x2B
 ```
 
-With the default identity, the response PDU begins:
+The response begins:
 
 ```text
 2B 0E 01 81 00 00 03 ...
@@ -110,7 +124,7 @@ With the default identity, the response PDU begins:
 └─────────────────── FC43
 ```
 
-The object list that follows contains object ID, object length, and object value for each returned object.
+The object list contains object ID, object length, and object value for each returned object.
 
 ---
 
@@ -118,35 +132,41 @@ The object list that follows contains object ID, object length, and object value
 
 | Condition | Modbus exception |
 |---|---:|
+| Addressed logical `(Port, UnitID)` does not exist | `0x02` Illegal Data Address |
 | Unsupported MEI type | `0x01` Illegal Function |
 | Unknown object for individual access | `0x02` Illegal Data Address |
 | Invalid request length or Read Device ID code | `0x03` Illegal Data Value |
 
-These are protocol-level FC43/MEI14 errors. Authority and State Sealing may reject the request before MEI14 processing, as described below.
+Authority and State Sealing may reject the request before FC43/MEI14 processing.
 
 ---
 
 ## Authority and State Sealing
 
-Device identification does not bypass MMA security controls.
+FC43 does not bypass MMA security controls.
 
-The Modbus request path remains:
+The request path remains:
 
 ```text
 Modbus request
+    ↓
+resolve (Port, UnitID)
     ↓
 State Sealing
     ↓
 Authority policy
     ↓
-FC43 / MEI14 device-identification handler
+FC43 / MEI14 handler
+    ↓
+per-memory FC43 metadata
 ```
 
 Therefore:
 
-1. If the addressed `(Port, UnitID)` memory is sealed, FC43 receives the configured State Sealing exception.
+1. If the addressed memory is sealed, FC43 receives the configured State Sealing exception.
 2. If authority denies FC43, the request receives the authority denial response.
-3. Only an allowed and unsealed request reaches the device-identification handler.
+3. Only an allowed and unsealed request reaches FC43 processing.
+4. The identity returned belongs only to the addressed `(Port, UnitID)`.
 
 To permit identity reads, the matching memory policy must explicitly include function code 43:
 
@@ -159,69 +179,61 @@ policy:
       allow_fc: [1, 2, 3, 4, 43]
 ```
 
-Adding `device_identity` to the YAML does not automatically authorize FC43.
-
-Because authority and State Sealing are memory-scoped, the client must address an existing `(Port, UnitID)` whose policy permits FC43. The identity value returned is nevertheless the same process-wide MMA identity.
+Configuring `fc43` does not automatically authorize FC43.
 
 ---
 
-## Observability
-
-FC43 passes through the authority decision path, but the current Access Event engine classifies only FC1-FC4 as `read` and FC5, FC6, FC15, and FC16 as `write`.
-
-FC43 is a non-memory Modbus service and is not currently classified as either action. Therefore:
-
-- allowed FC43 requests do not emit Access Events;
-- denied FC43 requests do not emit Access Events;
-- FC43 does not produce Notification Engine write events;
-- FC43 does not produce RBE memory events.
-
-This is an observability boundary only. State Sealing and authority enforcement still apply normally.
-
----
-
-## Raw Ingest
+## Raw Ingest, RBE, and Memory Core
 
 Raw Ingest is unaffected.
 
-Device identification exists only in the Modbus transport. Raw Ingest does not expose or modify the identity and does not use FC43.
+FC43:
+
+- does not allocate coils or registers;
+- does not read or write Modbus memory areas;
+- does not modify memorycore;
+- does not produce Notification Engine write events;
+- does not produce RBE memory events.
+
+The feature shares `(Port, UnitID)` identity with the memory definition while remaining protocol metadata.
 
 ---
 
 ## Architectural Boundary
 
-The implementation intentionally separates configuration from Modbus protocol mechanics:
+The implementation keeps FC43 metadata outside core memory:
 
 ```text
-YAML
- ↓
-config.DeviceIdentityConfig
- ↓
-config.BuildDeviceIdentityValues()
- ↓
+listeners[].memory[].fc43
+          ↓
+config.BuildDeviceIdentities()
+          ↓
+map[MemoryID]DeviceIdentity
+          ↓
 process runtime
- ↓
-modbus.NewDeviceIdentity()
- ↓
-HandleConnWithIdentity()
- ↓
-FC43 / MEI14
+          ↓
+modbus.DeviceIdentities
+          ↓
+HandleConnWithIdentities()
+          ↓
+resolve (Port, UnitID)
+          ↓
+FC43 / MEI14 response
 ```
 
-The memory core does not store, construct, interpret, or dispatch device identity.
-
-This preserves the MMA rule that core memory remains protocol-agnostic.
+`memorycore` continues to store raw memory and remains unaware of FC43.
 
 ---
 
 ## Operational Notes
 
+- Different Unit IDs on the same listener may expose different identities.
+- The same Unit ID on different listener ports may expose different identities.
 - Identity changes require an MMA restart.
 - The default revision follows the compiled MMA release version.
-- Custom revision text is descriptive identity metadata; it does not change the running binary version.
+- Custom revision text is descriptive metadata and does not change the running binary version.
 - Device identity is read-only.
-- Device identity does not allocate Modbus registers.
-- FC43 is not a memory read and does not produce Access Events, Notification Engine write events, or RBE memory events.
+- FC43 is not a memory read or write.
 
 ---
 
