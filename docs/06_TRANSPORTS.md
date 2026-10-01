@@ -75,6 +75,24 @@ Supported function codes:
 - FC16: Write Multiple Registers (Holding Registers only)
 - FC43 / MEI14: Read Device Identification
 
+### FC43 / MEI14 Device Identification
+
+FC43 (`0x2B`) with MEI type 14 (`0x0E`) is a **Modbus service request**, not a core-memory read or write.
+
+It:
+- exposes the process-wide Basic identity objects VendorName, ProductCode, and MajorMinorRevision
+- is addressed through the request's listener port and Unit ID so State Sealing and authority remain memory-scoped
+- requires function code `43` to be permitted by the matching authority policy
+- does not specify a memory area, register/coil address, count, or values
+- does not allocate or access core memory values
+- is read-only and immutable after startup
+- does not produce an RBE memory event
+- is not currently classified as a read/write Access Event and therefore is not emitted by the Access Event engine
+
+State Sealing and authority are evaluated before the FC43 handler. The identity returned after those checks is global to the MMA process.
+
+See [MODBUS_DEVICE_IDENTIFICATION.md](MODBUS_DEVICE_IDENTIFICATION.md) for configuration, object IDs, pagination, conformity, and exception behavior.
+
 Restrictions:
 - no retries with intent
 - no request aggregation
@@ -137,16 +155,20 @@ Access Control Bypass:
 
 ## Explicit Targeting Requirement
 
-All transports must require explicit targeting.
+All transport requests must explicitly identify the protocol target required by that operation.
 
-A valid request must always specify:
-- port (derived from listening endpoint for Modbus TCP; resolved for raw ingest)
-- unit_id (explicit in protocol)
-- memory area (explicit in protocol)
-- address (explicit in protocol)
-- values (explicit in protocol payload)
+For **memory operations**, a valid request must identify:
+- port (derived from the listening endpoint for Modbus TCP; resolved for Raw Ingest)
+- unit_id
+- memory area
+- address
+- the operation-specific count and/or values required by the protocol
 
-If any of these are missing or ambiguous, the request must be rejected.
+For **Modbus non-memory services**, the request must contain the fields defined by that Modbus service. FC43 / MEI14 Read Device Identification is the current non-memory service: it carries the Unit ID plus MEI14 request fields and intentionally has no memory area, memory address, count, or values.
+
+FC43 still uses the request's `(Port, UnitID)` to select the State Sealing and authority context before the process-wide identity is returned.
+
+Missing or ambiguous fields that are required by the specific operation must be rejected. Transports must never invent a memory target or infer omitted protocol fields.
 
 ---
 
