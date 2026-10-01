@@ -21,11 +21,11 @@ func HandleConn(conn net.Conn, store *memorycore.Store, auth *authority.Authorit
 
 // HandleConnWithRBE preserves the order: state sealing, authority, dispatch.
 func HandleConnWithRBE(conn net.Conn, store *memorycore.Store, auth *authority.Authority, notifier *notify.Engine, observer *rbe.Engine, ae *accessevents.Engine, debug bool) {
-	HandleConnWithIdentity(conn, store, auth, notifier, observer, ae, debug, DefaultDeviceIdentity())
+	HandleConnWithIdentities(conn, store, auth, notifier, observer, ae, debug, nil)
 }
 
-// HandleConnWithIdentity uses the final startup identity after sealing and authority.
-func HandleConnWithIdentity(conn net.Conn, store *memorycore.Store, auth *authority.Authority, notifier *notify.Engine, observer *rbe.Engine, ae *accessevents.Engine, debug bool, identity DeviceIdentity) {
+// HandleConnWithIdentities selects startup metadata by MemoryID after sealing and authority.
+func HandleConnWithIdentities(conn net.Conn, store *memorycore.Store, auth *authority.Authority, notifier *notify.Engine, observer *rbe.Engine, ae *accessevents.Engine, debug bool, identities *DeviceIdentities) {
 	defer conn.Close()
 	localAddr, ok := conn.LocalAddr().(*net.TCPAddr)
 	if !ok {
@@ -72,7 +72,12 @@ func HandleConnWithIdentity(conn net.Conn, store *memorycore.Store, auth *author
 
 		var pdu []byte
 		if req.FunctionCode == 0x2b {
-			pdu = identity.ReadDeviceIdentification(req.Payload)
+			identity, ok := identities.lookup(mid, store)
+			if !ok {
+				pdu = BuildExceptionPDU(req.FunctionCode, 0x02)
+			} else {
+				pdu = identity.ReadDeviceIdentification(req.Payload)
+			}
 		} else {
 			pdu = DispatchMemoryWithRBE(store, notifier, observer, srcIPStr, req)
 		}

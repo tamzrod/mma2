@@ -15,6 +15,7 @@ import (
 	"mma2/internal/authority"
 	"mma2/internal/config"
 	"mma2/internal/ingress"
+	"mma2/internal/memorycore"
 	"mma2/internal/notify"
 	"mma2/internal/rbe"
 	"mma2/internal/transport/modbus"
@@ -41,18 +42,19 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
-	identityValues, err := config.BuildDeviceIdentityValues(cfg)
+	identityValues, err := config.BuildDeviceIdentities(cfg)
 	if err != nil {
 		log.Fatalf("device identity validation failed: %v", err)
 	}
-	identity, err := modbus.NewDeviceIdentity(
-		identityValues.VendorName,
-		identityValues.ProductCode,
-		identityValues.MajorMinorRevision,
-	)
-	if err != nil {
-		log.Fatalf("device identity construction failed: %v", err)
+	configuredIdentities := make(map[memorycore.MemoryID]modbus.DeviceIdentity, len(identityValues))
+	for mid, values := range identityValues {
+		identity, err := modbus.NewDeviceIdentity(values.VendorName, values.ProductCode, values.MajorMinorRevision)
+		if err != nil {
+			log.Fatalf("device identity construction failed for %v: %v", mid, err)
+		}
+		configuredIdentities[mid] = identity
 	}
+	identities := modbus.NewDeviceIdentities(configuredIdentities)
 
 	rbeRules, err := config.BuildRBERules(cfg)
 	if err != nil {
@@ -137,7 +139,7 @@ func main() {
 
 	for _, gate := range cfg.Ingress {
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConnWithIdentity(conn, store, auth, notifier, observer, ae, cfg.Debug, identity)
+			modbus.HandleConnWithIdentities(conn, store, auth, notifier, observer, ae, cfg.Debug, identities)
 		}
 		onRawIngest := func(conn net.Conn) {
 			rawingest.HandleConnWithRBE(conn, store, notifier, observer)
