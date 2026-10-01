@@ -41,6 +41,11 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
+	identity, err := config.BuildDeviceIdentity(cfg)
+	if err != nil {
+		log.Fatalf("device identity validation failed: %v", err)
+	}
+
 	rbeRules, err := config.BuildRBERules(cfg)
 	if err != nil {
 		log.Fatalf("RBE validation failed: %v", err)
@@ -124,7 +129,7 @@ func main() {
 
 	for _, gate := range cfg.Ingress {
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConnWithRBE(conn, store, auth, notifier, observer, ae, cfg.Debug)
+			modbus.HandleConnWithIdentity(conn, store, auth, notifier, observer, ae, cfg.Debug, identity)
 		}
 		onRawIngest := func(conn net.Conn) {
 			rawingest.HandleConnWithRBE(conn, store, notifier, observer)

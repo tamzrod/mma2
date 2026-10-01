@@ -5,12 +5,13 @@ import "mma2/internal/accessevents"
 
 // Config is the root configuration for MMA2.
 type Config struct {
-	Ingress      []IngressGate                    `yaml:"listeners"`
-	Memory       MemoryConfig                     `yaml:"memory"`
-	Notify       *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
-	RBE          *RBEOutputConfig                 `yaml:"rbe"`
-	AccessEvents *accessevents.AccessEventsConfig `yaml:"access_events"`
-	Debug        bool                             `yaml:"debug"`
+	DeviceIdentity *DeviceIdentityConfig            `yaml:"device_identity"`
+	Ingress        []IngressGate                    `yaml:"listeners"`
+	Memory         MemoryConfig                     `yaml:"memory"`
+	Notify         *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
+	RBE            *RBEOutputConfig                 `yaml:"rbe"`
+	AccessEvents   *accessevents.AccessEventsConfig `yaml:"access_events"`
+	Debug          bool                             `yaml:"debug"`
 }
 
 // Legacy write-only notification output.

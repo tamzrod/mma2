@@ -19,6 +19,8 @@ func DispatchMemory(store *memorycore.Store, notifier *notify.Engine, sourceIP s
 // responses retain their original behavior. RBE sends no register values.
 func DispatchMemoryWithRBE(store *memorycore.Store, notifier *notify.Engine, observer *rbe.Engine, sourceIP string, req *Request) []byte {
 	switch req.FunctionCode {
+	case 0x2b:
+		return DefaultDeviceIdentity().ReadDeviceIdentification(req.Payload)
 	case 1:
 		return handleReadBits(store, req, memorycore.AreaCoils)
 	case 2:

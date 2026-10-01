@@ -131,3 +131,30 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 ---
 
 ## Archi
+
+### Modbus device identification
+
+FC43 / MEI 14 (`0x2B / 0x0E`) exposes the Basic ASCII objects VendorName,
+ProductCode, and MajorMinorRevision. Defaults are `github.com/tamzrod`, `MMA2`,
+and the release identifier in `internal/version/version.go`. An optional root
+configuration section overrides each field independently:
+
+```yaml
+device_identity:
+  vendor_name: "github.com/tamzrod"
+  product_code: "MMA2"
+  major_minor_revision: "2.0"
+```
+
+Omitted fields retain their defaults. Explicit empty values, non-ASCII values,
+and values longer than 244 bytes fail startup validation; objects are never
+truncated. Identity is fixed at startup and has no register write interface.
+
+Basic, Regular, and Extended stream requests (codes 1–3) return the available
+Basic objects; individual access (code 4) returns one object. Conformity is
+`0x81`. Responses paginate whole objects within the 253-byte PDU limit.
+Unknown stream object IDs restart at object 0; unknown individual IDs return
+exception 2. Invalid request lengths/codes return exception 3; unsupported MEI
+types return exception 1. Existing memory sealing and per-memory authority
+checks apply: the matching policy must allow FC43 (`allow_fc: [43]`, alongside
+any other required function codes).
