@@ -8,10 +8,9 @@ import (
 )
 
 // Validate performs structural validation on the loaded configuration.
-// It enforces bounds and consistency only, and supports BOTH config shapes:
-//
-//  1. Legacy global memory model: cfg.Memory.Memories (each with explicit port)
-//  2. Nested listener model: listeners[].memory[] (port inferred from listeners[].listen)
+// The canonical memory model is listeners[].memory[], with the port inferred
+// from listeners[].listen. Legacy memory.memories configuration is rejected
+// before memory validation.
 //
 // Runtime memory identity is ALWAYS (Port, UnitID).
 func Validate(cfg *Config) error {
@@ -28,7 +27,7 @@ func Validate(cfg *Config) error {
 		return err
 	}
 
-	// Validate memory definitions from BOTH sources and enforce identity consistency.
+	// Validate canonical nested memory definitions and enforce identity consistency.
 	if err := validateAllMemories(cfg); err != nil {
 		return err
 	}
@@ -75,7 +74,7 @@ func validateIngress(gates []IngressGate) error {
 }
 
 // --------------------
-// Memory validation (both models)
+// Memory validation
 // --------------------
 
 type memIdentity struct {
@@ -86,7 +85,7 @@ type memIdentity struct {
 func validateAllMemories(cfg *Config) error {
 	seen := make(map[memIdentity]string)
 
-	// 1) Legacy model
+	// Legacy entries are rejected earlier by BuildDeviceIdentities.
 	for key, def := range cfg.Memory.Memories {
 		if err := validateLegacyMemoryDef(key, def); err != nil {
 			return err
@@ -102,7 +101,7 @@ func validateAllMemories(cfg *Config) error {
 		seen[id] = fmt.Sprintf("memory[%s]", key)
 	}
 
-	// 2) Nested listener model
+	// Canonical nested listener model.
 	for li, l := range cfg.Ingress {
 		if len(l.Memory) == 0 {
 			continue
