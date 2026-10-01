@@ -286,9 +286,9 @@ If configuration attempts to violate these rules, it must be rejected.
 
 ---
 
-## No Implicit Defaults
+## No Implicit Topology or Authority Defaults
 
-Configuration must be explicit.
+Configuration that defines runtime topology, memory, or authority must be explicit.
 
 The following are forbidden:
 - implicit listeners
@@ -298,7 +298,11 @@ The following are forbidden:
 - implicit policies
 - implicit addresses
 
-If a value is required and missing, startup must fail.
+If a required topology, memory, or authority value is missing, startup must fail.
+
+Optional features may define **documented deterministic defaults** when their contract explicitly specifies them. These are not inferred from runtime conditions. Current examples include `debug: false`, the State Sealing default exception when sealing is configured, and the compiled `device_identity` values.
+
+For Device Identity specifically, omission of the section or of an individual identity field selects the fixed compiled default documented above. MMA does not derive identity from the listener, Unit ID, host name, network interface, or memory contents.
 
 ---
 
