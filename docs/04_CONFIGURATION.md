@@ -78,6 +78,29 @@ When `true`: those errors are emitted to the log, which is useful during integra
 
 This setting has no effect on memory behavior, authority enforcement, or steady-state operation.
 
+### Device Identity (Optional)
+
+```yaml
+device_identity:
+  vendor_name: "github.com/tamzrod"
+  product_code: "MMA2"
+  major_minor_revision: "2.0"
+```
+
+`device_identity` is a top-level, process-wide Modbus identity. It is not scoped to a listener or Unit ID.
+
+All three fields are optional independently. When omitted, the defaults are:
+
+- `vendor_name`: `github.com/tamzrod`
+- `product_code`: `MMA2`
+- `major_minor_revision`: the compiled MMA2 release version
+
+An explicitly configured value must contain 1..244 ASCII bytes. Empty, non-ASCII, or oversized values fail startup validation. Identity is resolved once at startup and is immutable.
+
+This configuration enables the identity values but does not bypass authority. Each memory policy that should permit FC43 / MEI14 reads must include function code `43` in `allow_fc`. State Sealing also applies before identity processing.
+
+See [MODBUS_DEVICE_IDENTIFICATION.md](MODBUS_DEVICE_IDENTIFICATION.md) for the complete protocol and security behavior.
+
 ### Listeners (Required)
 
 ```yaml
@@ -263,9 +286,9 @@ If configuration attempts to violate these rules, it must be rejected.
 
 ---
 
-## No Implicit Defaults
+## No Implicit Topology or Authority Defaults
 
-Configuration must be explicit.
+Configuration that defines runtime topology, memory, or authority must be explicit.
 
 The following are forbidden:
 - implicit listeners
@@ -275,7 +298,11 @@ The following are forbidden:
 - implicit policies
 - implicit addresses
 
-If a value is required and missing, startup must fail.
+If a required topology, memory, or authority value is missing, startup must fail.
+
+Optional features may define **documented deterministic defaults** when their contract explicitly specifies them. These are not inferred from runtime conditions. Current examples include `debug: false`, the State Sealing default exception when sealing is configured, and the compiled `device_identity` values.
+
+For Device Identity specifically, omission of the section or of an individual identity field selects the fixed compiled default documented above. MMA does not derive identity from the listener, Unit ID, host name, network interface, or memory contents.
 
 ---
 

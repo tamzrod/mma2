@@ -14,15 +14,15 @@ For the formal configuration contract and validation rules, see [04_CONFIGURATIO
 2. [Configuration File Structure](#configuration-file-structure)
 3. [Basic Examples](#basic-examples)
 4. [Listener Configuration](#listener-configuration)
-5. [Memory Configuration](#memory-configuration)
-6. [State Sealing Configuration](#state-sealing-configuration)
-7. [Access Control (Policy)](#access-control-policy)
-8. [Notification Configuration](#notification-configuration)
-9. [Debug Logging](#debug-logging)
-10. [Access Events Configuration](#access-events-configuration)
-11. [Raw Ingest Configuration](#raw-ingest-configuration)
-12. [Common Use Cases](#common-use-cases)
-13. [Validation and Troubleshooting](#validation-and-troubleshooting)
+6. [Memory Configuration](#memory-configuration)
+7. [State Sealing Configuration](#state-sealing-configuration)
+8. [Access Control (Policy)](#access-control-policy)
+9. [Notification Configuration](#notification-configuration)
+10. [Debug Logging](#debug-logging)
+11. [Access Events Configuration](#access-events-configuration)
+12. [Raw Ingest Configuration](#raw-ingest-configuration)
+13. [Common Use Cases](#common-use-cases)
+14. [Validation and Troubleshooting](#validation-and-troubleshooting)
 
 ---
 
@@ -154,6 +154,59 @@ listeners:
 ```
 
 **Note:** Unit ID 1 on port 502 is a different memory than Unit ID 1 on port 503.
+
+---
+
+## Device Identity Configuration
+
+MMA supports Modbus FC43 / MEI14 Read Device Identification. Identity is configured once at the root of the YAML and applies to the entire MMA process.
+
+```yaml
+device_identity:
+  vendor_name: "github.com/tamzrod"
+  product_code: "MMA2"
+  major_minor_revision: "2.0"
+```
+
+### Fields and Defaults
+
+| YAML field | Modbus object | Default |
+|---|---|---|
+| `vendor_name` | VendorName (`0x00`) | `github.com/tamzrod` |
+| `product_code` | ProductCode (`0x01`) | `MMA2` |
+| `major_minor_revision` | MajorMinorRevision (`0x02`) | compiled MMA2 release version |
+
+The entire section may be omitted. Individual fields may also be omitted:
+
+```yaml
+device_identity:
+  product_code: "MMA2-PPC"
+```
+
+In that example only ProductCode changes; VendorName and MajorMinorRevision use their compiled defaults.
+
+### Validation
+
+Each explicitly configured value must contain 1..244 ASCII bytes. Empty strings, non-ASCII text, and values longer than 244 bytes cause startup validation to fail. MMA never truncates identity values.
+
+Identity is resolved during startup and cannot be changed at runtime.
+
+### Authorizing FC43
+
+Device identity does not bypass policy or State Sealing. A client can read identity only through an existing `(Port, UnitID)` whose policy allows function code 43.
+
+```yaml
+policy:
+  rules:
+    - id: allow-identification
+      source_ip:
+        - 192.168.1.0/24
+      allow_fc: [1, 3, 4, 43]
+```
+
+If the memory is sealed, the configured State Sealing exception is returned before device-identification processing.
+
+For full request/response, pagination, object IDs, conformity, and exception behavior, see [MODBUS_DEVICE_IDENTIFICATION.md](MODBUS_DEVICE_IDENTIFICATION.md).
 
 ---
 

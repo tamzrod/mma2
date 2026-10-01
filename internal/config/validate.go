@@ -19,6 +19,10 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config is nil")
 	}
 
+	if _, err := BuildDeviceIdentityValues(cfg); err != nil {
+		return err
+	}
+
 	// Ingress is optional in strict structural sense; validate only if present.
 	if err := validateIngress(cfg.Ingress); err != nil {
 		return err

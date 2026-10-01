@@ -41,6 +41,19 @@ func main() {
 		log.Fatalf("config validation failed: %v", err)
 	}
 
+	identityValues, err := config.BuildDeviceIdentityValues(cfg)
+	if err != nil {
+		log.Fatalf("device identity validation failed: %v", err)
+	}
+	identity, err := modbus.NewDeviceIdentity(
+		identityValues.VendorName,
+		identityValues.ProductCode,
+		identityValues.MajorMinorRevision,
+	)
+	if err != nil {
+		log.Fatalf("device identity construction failed: %v", err)
+	}
+
 	rbeRules, err := config.BuildRBERules(cfg)
 	if err != nil {
 		log.Fatalf("RBE validation failed: %v", err)
@@ -124,18 +137,18 @@ func main() {
 
 	for _, gate := range cfg.Ingress {
 		onModbus := func(conn net.Conn) {
-			modbus.HandleConnWithRBE(conn, store, auth, notifier, observer, ae, cfg.Debug)
+			modbus.HandleConnWithIdentity(conn, store, auth, notifier, observer, ae, cfg.Debug, identity)
 		}
 		onRawIngest := func(conn net.Conn) {
 			rawingest.HandleConnWithRBE(conn, store, notifier, observer)
 		}
 		l := ingress.NewListener(gate)
 		shutdown = append(shutdown, func() { _ = l.Close() })
-		go func(g ingress.Listener) {
+		go func(g *ingress.Listener, gateID string) {
 			if err := g.ListenAndServe(onModbus, onRawIngest); err != nil {
-				log.Printf("ingress %s stopped: %v", gate.ID, err)
+				log.Printf("ingress %s stopped: %v", gateID, err)
 			}
-		}(*l)
+		}(l, gate.ID)
 	}
 	log.Println("mma2 ingress started")
 
