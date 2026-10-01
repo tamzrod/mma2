@@ -144,11 +144,11 @@ func main() {
 		}
 		l := ingress.NewListener(gate)
 		shutdown = append(shutdown, func() { _ = l.Close() })
-		go func(g ingress.Listener) {
+		go func(g *ingress.Listener, gateID string) {
 			if err := g.ListenAndServe(onModbus, onRawIngest); err != nil {
-				log.Printf("ingress %s stopped: %v", gate.ID, err)
+				log.Printf("ingress %s stopped: %v", gateID, err)
 			}
-		}(*l)
+		}(l, gate.ID)
 	}
 	log.Println("mma2 ingress started")
 
