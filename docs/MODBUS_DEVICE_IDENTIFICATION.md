@@ -165,6 +165,21 @@ Because authority and State Sealing are memory-scoped, the client must address a
 
 ---
 
+## Observability
+
+FC43 passes through the authority decision path, but the current Access Event engine classifies only FC1-FC4 as `read` and FC5, FC6, FC15, and FC16 as `write`.
+
+FC43 is a non-memory Modbus service and is not currently classified as either action. Therefore:
+
+- allowed FC43 requests do not emit Access Events;
+- denied FC43 requests do not emit Access Events;
+- FC43 does not produce Notification Engine write events;
+- FC43 does not produce RBE memory events.
+
+This is an observability boundary only. State Sealing and authority enforcement still apply normally.
+
+---
+
 ## Raw Ingest
 
 Raw Ingest is unaffected.
@@ -206,7 +221,7 @@ This preserves the MMA rule that core memory remains protocol-agnostic.
 - Custom revision text is descriptive identity metadata; it does not change the running binary version.
 - Device identity is read-only.
 - Device identity does not allocate Modbus registers.
-- FC43 is not a memory read and does not produce an RBE memory event.
+- FC43 is not a memory read and does not produce Access Events, Notification Engine write events, or RBE memory events.
 
 ---
 
