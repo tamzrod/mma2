@@ -1,3 +1,4 @@
+// internal/transport/modbus/device_identity.go
 package modbus
 
 import (
