@@ -3,9 +3,9 @@
 > **Architecture decision:** persistence is exclusively a property of each
 > `listeners[].memory[]` entry. There is **no root/global `persistence` block**,
 > no global enable flag, no global persistence directory, and no global range
-> selector. Current branch implementation still uses the superseded global
-> configuration and **must be migrated before merging**. The YAML below defines
-> the target contract; it does not yet run on the existing implementation.
+> selector. This per-memory design is implemented and verified on
+> `feature/native-persistence` (PR #22). The YAML below is supported by that
+> branch; it becomes available on `main` when the PR is merged.
 
 Native persistence stores raw MMA2 memory on disk, independently of RBE, Modbus
 transport, and State Sealing. Each `(Port, UnitID)` decides whether and what
@@ -116,10 +116,11 @@ per-memory definitions. Ensure another MMA2 process does not already own port
 ## Verification and limitations
 
 - The operator reports that per-memory persistence now works in manual testing.
-- Previously executed full-suite/race tests applied to the former global
-  implementation. Re-run `go test ./... -count=1`,
-  `go test -race ./... -count=1`, and the current manual process test after
-  migration before approving a merge.
+- Independent V01/V02 verification on `feature/native-persistence` reported
+  PASS for `go vet ./...`, `go test ./... -count=1`,
+  `go test -race ./... -count=1`, and
+  `python3 test/persistence_manual/test_multi_memory.py`. These results
+  concern the feature branch, not the current `main` runtime.
 - Persistence makes no per-write power-loss durability guarantee. Updates since
   the last completed disk flush can be lost after an abrupt termination.
 - A bad primary is detected with CRC32 and restored from a valid backup. The
