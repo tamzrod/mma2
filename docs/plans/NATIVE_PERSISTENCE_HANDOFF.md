@@ -37,8 +37,11 @@ Branch: feature/native-persistence
    applied with `ApplyRange`, refreshing only the touched block CRC(s) — never a
    whole-file rewrite.
 4. **Checkpoint**: the backup is refreshed (atomic rename) from a primary that
-   has first passed `ParseLayout`, at most once per checkpoint interval. A
-   corrupt primary is never copied over the good backup.
+   has first passed `ParseLayout`, on a fixed 60-second cadence
+   (`BackupInterval`, locked by contract) with no journal or multi-generation
+   scheme. A corrupt primary is never copied over the good backup; a failed
+   cycle is skipped. The interval is applied by a periodic ticker so the cadence
+   holds even when idle.
 5. **Shutdown flush**: `scheduler.Close` runs in the shutdown chain so pending
    dirty ranges reach disk on orderly exit.
 6. **Abrupt-crash contract**: writes since the last completed flush may be lost.

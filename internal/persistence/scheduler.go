@@ -38,9 +38,10 @@ type Scheduler struct {
 // flushed.
 const DefaultFlushDelay = 50 * time.Millisecond
 
-// DefaultCheckpointInterval is how often the known-good backup is refreshed
-// from a validated primary image.
-const DefaultCheckpointInterval = 30 * time.Second
+// BackupInterval is the fixed cadence at which the known-good backup is
+// refreshed from a validated primary image. Locked to 60 seconds by contract:
+// a simple fixed interval, not a per-mutation or multi-generation scheme.
+const BackupInterval = 60 * time.Second
 
 // NewScheduler creates a scheduler for the manager. It is a no-op when
 // persistence is disabled.
@@ -51,7 +52,7 @@ func NewScheduler(mgr *Manager) *Scheduler {
 	return &Scheduler{
 		mgr:      mgr,
 		delay:    DefaultFlushDelay,
-		checkpt:  DefaultCheckpointInterval,
+		checkpt:  BackupInterval,
 		wake:     make(chan struct{}, 1),
 		stop:     make(chan struct{}),
 		stopped:  make(chan struct{}),
@@ -93,6 +94,11 @@ func (s *Scheduler) run(ctx context.Context) {
 	}
 	defer timer.Stop()
 
+	// Periodic checkpoint even when idle, so the backup cadence holds without
+	// new writes.
+	ticker := time.NewTicker(BackupInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -101,6 +107,8 @@ func (s *Scheduler) run(ctx context.Context) {
 		case <-s.stop:
 			s.flushAll()
 			return
+		case <-ticker.C:
+			s.flushAll()
 		case <-s.wake:
 			if !timer.Stop() {
 				select {
