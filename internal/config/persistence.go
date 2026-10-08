@@ -60,13 +60,8 @@ type ResolvedPersistenceArea struct {
 // ValidatePersistence validates the persistence block when enabled.
 // It returns nil when the block is absent or disabled.
 func ValidatePersistence(cfg *Config) error {
-	if !cfg.Persistence.enabled() {
-		return nil
-	}
-	if strings.TrimSpace(cfg.Persistence.Directory) == "" {
-		return fmt.Errorf("persistence.directory is required when persistence is enabled")
-	}
-	return validatePersistenceRanges(cfg)
+    _, err := BuildPerMemoryPersistencePlans(cfg)
+    return err
 }
 
 func validatePersistenceRanges(cfg *Config) error {
