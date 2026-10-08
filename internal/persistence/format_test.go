@@ -247,3 +247,13 @@ func TestMetadataCRCIgnoresPayloadChanges(t *testing.T) {
 		t.Fatal("metadata CRC not self-consistent")
 	}
 }
+
+func TestBytesForBitsUpperBoundary(t *testing.T) {
+    for _,tc := range []struct{ bits uint16; bytes int }{
+        {1,1},{7,1},{8,1},{9,2},{65528,8191},{65535,8192},
+    } {
+        if got:=bytesForBits(tc.bits);got!=tc.bytes {
+            t.Errorf("bytesForBits(%d)=%d, want %d",tc.bits,got,tc.bytes)
+        }
+    }
+}
