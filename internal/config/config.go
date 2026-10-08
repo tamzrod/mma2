@@ -12,6 +12,7 @@ type Config struct {
 	Notify         *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
 	RBE            *RBEOutputConfig                 `yaml:"rbe"`
 	AccessEvents   *accessevents.AccessEventsConfig `yaml:"access_events"`
+	Persistence    *PersistenceConfig               `yaml:"persistence"` // legacy root block: explicitly rejected
 	Debug          bool                             `yaml:"debug"`
 }
 
@@ -63,17 +64,18 @@ type MemoryConfig struct {
 }
 
 type MemoryDefinition struct {
-	FC43           *DeviceIdentityConfig `yaml:"fc43"`
-	Port           uint16                `yaml:"port"`
-	UnitID         uint16                `yaml:"unit_id"`
-	Coils          Area                  `yaml:"coils"`
-	DiscreteInputs Area                  `yaml:"discrete_inputs"`
-	HoldingRegs    Area                  `yaml:"holding_registers"`
-	InputRegs      Area                  `yaml:"input_registers"`
-	Notify         *NotifyConfig         `yaml:"notify"` // legacy
-	RBE            *RBERulesConfig       `yaml:"rbe"`
-	StateSealing   *StateSealingConfig   `yaml:"state_sealing"`
-	Policy         *MemoryPolicyConfig   `yaml:"policy"`
+	FC43           *DeviceIdentityConfig    `yaml:"fc43"`
+	Port           uint16                   `yaml:"port"`
+	UnitID         uint16                   `yaml:"unit_id"`
+	Coils          Area                     `yaml:"coils"`
+	DiscreteInputs Area                     `yaml:"discrete_inputs"`
+	HoldingRegs    Area                     `yaml:"holding_registers"`
+	InputRegs      Area                     `yaml:"input_registers"`
+	Notify         *NotifyConfig            `yaml:"notify"` // legacy
+	RBE            *RBERulesConfig          `yaml:"rbe"`
+	StateSealing   *StateSealingConfig      `yaml:"state_sealing"`
+	Persistence    *MemoryPersistenceConfig `yaml:"persistence"`
+	Policy         *MemoryPolicyConfig      `yaml:"policy"`
 }
 
 type Area struct {

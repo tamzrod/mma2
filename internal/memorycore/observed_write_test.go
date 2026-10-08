@@ -7,7 +7,7 @@ import (
 
 func TestObservedWriteCapturesPreWriteStateAndProbe(t *testing.T) {
 	m, err := NewMemory(MemoryLayouts{
-		Coils: &AreaLayout{Start: 0, Size: 8},
+		Coils:     &AreaLayout{Start: 0, Size: 8},
 		InputRegs: &AreaLayout{Start: 0, Size: 8},
 	})
 	if err != nil {

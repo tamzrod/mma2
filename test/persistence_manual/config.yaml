@@ -1,0 +1,19 @@
+# Standalone per-memory persistence manual test.
+# For manual Modbus Poll testing: connect to <linux-ip>:15030, Unit ID 1.
+listeners:
+  - id: persistence-test
+    listen: ":15030"
+    memory:
+      - unit_id: 1
+        coils: {start: 0, count: 16}
+        discrete_inputs: {start: 0, count: 16}
+        holding_registers: {start: 0, count: 32}
+        input_registers: {start: 0, count: 16}
+        persistence:
+          enabled: true
+          directory: test/persistence_manual/snapshots
+        policy:
+          rules:
+            - id: manual-test
+              source_ip: [0.0.0.0/0]
+              allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]

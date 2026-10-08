@@ -27,14 +27,19 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 type Listener struct {
 	cfg config.IngressGate
 
-	mu     sync.Mutex
-	ln     net.Listener
-	closed bool
+	mu        sync.Mutex
+	ln        net.Listener
+	closed    bool
+	active    map[net.Conn]struct{}
+	wg        sync.WaitGroup
+	closeOnce sync.Once
+	closeDone chan struct{}
+	closeErr  error
 }
 
 // NewListener creates a new ingress listener.
 func NewListener(cfg config.IngressGate) *Listener {
-	return &Listener{cfg: cfg}
+	return &Listener{cfg: cfg, active: make(map[net.Conn]struct{}), closeDone: make(chan struct{})}
 }
 
 // ListenAndServe starts the TCP listener and dispatches connections.
@@ -75,27 +80,50 @@ func (l *Listener) ListenAndServe(
 			}
 			return err
 		}
+		l.mu.Lock()
+		if l.closed {
+			l.mu.Unlock()
+			_ = conn.Close()
+			return nil
+		}
+		l.active[conn] = struct{}{}
+		l.wg.Add(1)
+		l.mu.Unlock()
 		go l.handleConn(conn, onModbus, onRawIngest)
 	}
 }
 
-// Close stops Accept and unbinds the port. It is idempotent.
+// Close stops Accept, closes active sockets, and waits for all handlers to exit.
+// The caller can safely perform a final persistence flush after it returns.
 func (l *Listener) Close() error {
 	if l == nil {
 		return nil
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.closed {
-		return nil
-	}
-	l.closed = true
-	if l.ln == nil {
-		return nil
-	}
-	err := l.ln.Close()
-	l.ln = nil
-	return err
+	l.closeOnce.Do(func() {
+		l.mu.Lock()
+		l.closed = true
+		ln := l.ln
+		l.ln = nil
+		connections := make([]net.Conn, 0, len(l.active))
+		for conn := range l.active {
+			connections = append(connections, conn)
+		}
+		l.mu.Unlock()
+
+		// Never invoke socket Close while holding the listener mutex.
+		if ln != nil {
+			l.closeErr = ln.Close()
+		}
+		for _, conn := range connections {
+			_ = conn.Close()
+		}
+		// Every accepted handler is registered while holding l.mu before
+		// shutdown sets closed, so no new WaitGroup Add can follow.
+		l.wg.Wait()
+		close(l.closeDone)
+	})
+	<-l.closeDone
+	return l.closeErr
 }
 
 func (l *Listener) handleConn(
@@ -103,6 +131,13 @@ func (l *Listener) handleConn(
 	onModbus func(net.Conn),
 	onRawIngest func(net.Conn),
 ) {
+	defer func() {
+		_ = conn.Close()
+		l.mu.Lock()
+		delete(l.active, conn)
+		l.mu.Unlock()
+		l.wg.Done()
+	}()
 	proto, reader, err := Classify(conn)
 	if err != nil {
 		conn.Close()

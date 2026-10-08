@@ -130,6 +130,22 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 
 ---
 
+## Native Persistence
+
+MMA2 can persist authoritative raw memory to disk, configured **per
+`listeners[].memory[]` entry only**. Each (Port, UnitID) independently enables
+persistence, chooses its directory and optionally selects ranges. Omitted
+persistence means disabled; omitted ranges on an enabled memory persist its
+allocated areas. No root-level persistence setting is supported.
+
+The runtime restores verified binary snapshots before listeners accept requests.
+Targeted writes maintain the latest `.bin`; a CRC32-validated `.bak` is
+refreshed every 60 seconds for recovery. See
+[docs/PERSISTENCE.md](docs/PERSISTENCE.md) for configuration, disk behavior,
+durability limitations and the manual Modbus Poll restart test.
+
+---
+
 ## Modbus Device Identification
 
 FC43 / MEI 14 (`0x2B / 0x0E`) exposes the Basic ASCII objects VendorName,

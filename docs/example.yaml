@@ -14,6 +14,10 @@
 # Defaults to false when absent.
 # debug: true
 
+# Native persistence is configured per memory entry only.
+# Schema: listeners[].memory[].persistence.
+# There is no root-level persistence configuration.
+
 listeners:
   # ------------------------------------------------------------
   # Listener on standard Modbus TCP port 502
@@ -26,6 +30,12 @@ listeners:
       # UNIT ID 1 — OPEN DEVICE
       # ========================================================
       - unit_id: 1
+
+        # Per-memory persistence (disabled when omitted).
+        # persistence:
+        #   enabled: true
+        #   directory: /var/lib/mma2/unit1
+        # Omit ranges to persist all areas allocated to this memory.
 
         # Optional FC43 identity for this (Port, UnitID).
         # Omitted fields use compiled defaults.

@@ -84,6 +84,7 @@ func (m *Memory) WriteBitsObserved(area Area, address, count uint16, src []byte,
 	result.ProbeBefore = before
 	copyBits(result.Previous, backing, off, count)
 	writeBits(backing, off, count, src)
+	m.notifyCommitted(area, address, count)
 	return result, nil
 }
 
@@ -132,5 +133,6 @@ func (m *Memory) WriteRegsObserved(area Area, address, count uint16, src []byte,
 		binary.BigEndian.PutUint16(result.Previous[i*2:i*2+2], backing[index])
 		backing[index] = binary.BigEndian.Uint16(src[i*2 : i*2+2])
 	}
+	m.notifyCommitted(area, address, count)
 	return result, nil
 }
