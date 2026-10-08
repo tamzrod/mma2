@@ -18,9 +18,9 @@ Mode: CODE one bounded task at a time, then independent VERIFY.
 - Preferred snapshot is fixed-layout binary `.bin` with address-to-file offsets, enabling word-level (`WriteAt` 2 bytes) and bit-byte-level (read-modify-write containing byte) updates without a whole-file rewrite.
 - Initial snapshot creation and layout changes may use temporary-file atomic replacement. Runtime changes should use targeted offsets; the exact crash-consistency mechanism must be planned explicitly. Do not claim in-place writes have whole-snapshot atomicity.
 - Use CRC32 per fixed-size data block (initial candidate 256 bytes) so targeted changes only require their affected block checksum. Exact layout is finalized during P04.
-- Maintain a known-good backup image `snapshot.bak` separately from the current `snapshot.bin`. Never refresh the backup from a primary that has not passed integrity validation; never destroy the only valid recovery copy.
+- Maintain `snapshot.bin` as latest targeted-write image and `snapshot.bak` as a known-good recovery image. Refresh backup once every 60 seconds by validating a consistent primary, writing a temporary backup, then atomically replacing the old backup. Never replace the backup with an invalid or internally inconsistent image; skip that cycle on failure.
 - At startup validate primary first; if invalid, validate backup; if backup valid, restore and report recovery. If neither valid, enter FAILED without making partial/corrupt data externally available.
-- Define backup rotation/checkpoint rules so in-place writes never erase the only recoverable state. CRC32 identifies mismatches but does not itself guarantee atomicity of data+CRC writes.
+- Backup cadence is a simple fixed 60 seconds (not every memory mutation). No journal, multiple backup generations, or elaborate checkpoint scheduler. Coordinate primary updates with validation/copy to capture one consistent point-in-time image, without blocking protocol handlers on disk I/O. CRC32 detects damage but is not a durability guarantee.
 - Disk errors are observable. No guarantee of last-write durability between flushes is implied; precisely document the flush/durability contract.
 - Preserve existing core/protocol separation and avoid synchronous disk IO on memory-write hot paths.
 
@@ -39,7 +39,7 @@ Mode: CODE one bounded task at a time, then independent VERIFY.
 2. Enumerate all memory commit paths, including observed writes and future internal mutation entrypoints.
 3. Design one canonical committed-write hook or shared internal primitive without coupling memorycore to persistence or RBE. Confirm ordering/locking and how to prevent dropped dirty notifications.
 4. Define snapshot path ownership and multi-instance collision policy; define exact config placement and multiple custom range syntax according to actual repository conventions.
-5. Choose binary fixed-offset layout and word-level update contract. Specify header/identity/layout metadata, alignment, bit packing, update granularity, CRC32 block granularity, flush/sync, backup generation and recovery/rotation rules. Verify that no write can corrupt both primary and only good backup; reserve atomic rename for snapshot initialization/rebuild, not every word update.
+5. Choose binary fixed-offset layout and word-level update contract. Specify header/identity/layout metadata, alignment, bit packing, update granularity, CRC32 block granularity, flush/sync and consistency during 60-second backup creation. Verify a valid old backup remains intact if copying, validation or renaming fails; use atomic rename for initial image and backup replacement, not every word update.
 6. Record HARD assumptions with source path, exact function/type and evidence before CODE.
 
 ## Ordered micro-task chain
@@ -62,7 +62,7 @@ Scope: fixed-layout `.bin` with deterministic offsets by selected memory identit
 Gate: deterministic roundtrip and offset calculations; per-block CRC32 detects corruption; identity, version, length and range mismatch reject; metadata integrity validated.
 
 ### P05 — Binary disk store and targeted writes
-Scope: initial atomic `.bin` creation/rebuild via temp file and rename; runtime positional writes to selected 2-byte register or containing bit byte; preserve adjacent words/bits; serialized file access and explicit sync policy.
+Scope: initial atomic `.bin` creation/rebuild via temp file and rename; runtime positional writes to selected 2-byte register or containing bit byte; preserve adjacent words/bits; serialized file access and explicit sync policy. Every 60 seconds create a verified consistent backup via temp file and atomic replacement.
 Gate: changing one register does not rewrite unaffected payload; adjacent bits survive targeted updates; failures are reported. Keep a separately validated known-good backup before primary in-place mutations; document that ordinary in-place writes alone are not power-loss atomic.
 
 ### P06 — Startup restore orchestration
@@ -74,7 +74,7 @@ Scope: all direct and observed bit/register writes under appropriate synchroniza
 Gate: each successful committed change can mark persistence dirty exactly as required; failed writes never mark dirty; no dependency on observer/RBE and no races.
 
 ### P08 — Runtime dirty scheduler and flush
-Scope: coalescing targeted dirty address ranges, serialized positional writer, dirty generations, bounded write delay, final shutdown flush; assess whether journal/checkpoint is necessary for requested power-loss consistency.
+Scope: coalescing targeted dirty address ranges, serialized positional writer, dirty generations, bounded write delay and final shutdown flush. Backup on a fixed 60-second cadence only, with no journal or multi-generation checkpoint system.
 Gate: successful writes eventually reach their correct offsets without rewriting unrelated words; concurrent changes are not lost; abrupt crash guarantees and limitations explicitly documented.
 
 ### P09 — Runtime failure handling
