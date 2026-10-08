@@ -7,10 +7,12 @@ import (
 )
 
 // DirtyRange is a contiguous byte range within a snapshot file that has changed
-// and is not yet flushed.
+// and is not yet flushed. seg identifies the owning segment so ranges from
+// different segments are never merged together.
 type DirtyRange struct {
 	Start  uint32
 	Length uint32
+	seg    uint32 // owning segment's file offset; internal coalescing tag
 }
 
 // memoryObserver is the per-identity bridge from memorycore committed writes to
@@ -108,13 +110,13 @@ func committedDirtyRanges(layout *Layout, area memorycore.Area, address, count u
 		}
 
 		start, length := byteSpanWithinSegment(seg, lo, hi)
-		out = append(out, DirtyRange{Start: start, Length: length})
+		out = append(out, DirtyRange{Start: start, Length: length, seg: seg.Offset})
 	}
 	return out
 }
 
 // byteSpanWithinSegment converts an address span [lo, hi) inside a segment to a
-// file byte range.
+// file byte range tagged with the owning segment.
 func byteSpanWithinSegment(seg SegmentLayout, lo, hi uint32) (start, length uint32) {
 	if seg.Area.IsBitArea() {
 		firstByte := (lo - uint32(seg.Start)) / 8
@@ -149,7 +151,7 @@ func coalesce(ranges []DirtyRange) []DirtyRange {
 	out := ranges[:1]
 	for _, r := range ranges[1:] {
 		last := &out[len(out)-1]
-		if r.Start <= last.Start+last.Length {
+		if last.seg == r.seg && r.Start <= last.Start+last.Length {
 			end := max32(last.Start+last.Length, r.Start+r.Length)
 			last.Length = end - last.Start
 			continue

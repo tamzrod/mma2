@@ -240,10 +240,21 @@ func readRegSpanInto(mem *memorycore.Memory, seg SegmentLayout, regIndex, regCou
 }
 
 // readBitSpanInto reads the byte-aligned bit span covering the range into dst.
+// When the range's final byte extends past the segment's bit count (a
+// non-byte-aligned bit segment), only the in-range bits are read and the unused
+// high bits of the destination byte are left zero, matching the always-zero
+// padding bits stored on disk.
 func readBitSpanInto(mem *memorycore.Memory, seg SegmentLayout, local, length uint32, dst []byte) ([]byte, error) {
 	firstBit := uint32(seg.Start) + local*8
 	count := length * 8
-	buf := make([]byte, length)
+	segEnd := uint32(seg.Start) + uint32(seg.Count)
+	if firstBit >= segEnd {
+		return dst, nil
+	}
+	if firstBit+count > segEnd {
+		count = segEnd - firstBit
+	}
+	buf := make([]byte, (count+7)/8)
 	if err := mem.ReadBits(seg.Area, uint16(firstBit), uint16(count), buf); err != nil {
 		return nil, err
 	}

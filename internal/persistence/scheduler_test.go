@@ -184,6 +184,154 @@ func TestSchedulerCoalescesBurst(t *testing.T) {
 	}
 }
 
+func TestCoalesceDoesNotMergeAcrossSegments(t *testing.T) {
+	// Two ranges that are file-adjacent but belong to different segments must
+	// NOT be merged, or the flush would reinterpret one segment's bytes as
+	// another's.
+	got := coalesce([]DirtyRange{
+		{Start: 0, Length: 4, seg: 0},
+		{Start: 4, Length: 4, seg: 4}, // different segment, adjacent in file
+	})
+	if len(got) != 2 {
+		t.Fatalf("cross-segment ranges merged: %+v", got)
+	}
+	// Same segment, adjacent -> merged.
+	got = coalesce([]DirtyRange{
+		{Start: 0, Length: 4, seg: 0},
+		{Start: 4, Length: 4, seg: 0},
+	})
+	if len(got) != 1 || got[0].Length != 8 {
+		t.Fatalf("same-segment ranges not merged: %+v", got)
+	}
+}
+
+// TestSchedulerFlushDoesNotCorruptNeighboringSegment is the regression for the
+// cross-segment coalescing bug: coils and holding registers are file-adjacent,
+// so writing the last coil byte and the first register in one flush window must
+// not corrupt the registers.
+func TestSchedulerFlushDoesNotCorruptNeighboringSegment(t *testing.T) {
+	dir := t.TempDir()
+	plan := &config.ResolvedPersistence{
+		Directory: dir,
+		Ranges: map[memorycore.MemoryID][]config.ResolvedPersistenceArea{
+			{Port: 502, UnitID: 1}: {
+				{Area: memorycore.AreaCoils, Start: 0, Count: 8},       // 1 byte
+				{Area: memorycore.AreaHoldingRegs, Start: 0, Count: 4}, // 8 bytes, adjacent
+			},
+		},
+	}
+	allocs := map[memorycore.MemoryID]config.MemoryAllocation{
+		{Port: 502, UnitID: 1}: {Areas: map[memorycore.Area]config.Area{
+			memorycore.AreaCoils:       {Start: 0, Count: 8},
+			memorycore.AreaHoldingRegs: {Start: 0, Count: 4},
+		}},
+	}
+	m, err := New(plan, allocs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := memorycore.MemoryID{Port: 502, UnitID: 1}
+	mem, err := memorycore.NewMemory(memorycore.MemoryLayouts{
+		Coils:       &memorycore.AreaLayout{Start: 0, Size: 8},
+		HoldingRegs: &memorycore.AreaLayout{Start: 0, Size: 4},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.WriteRegs(memorycore.AreaHoldingRegs, 0, 4, []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RestoreMemory(id, mem); err != nil {
+		t.Fatal(err)
+	}
+	m.AttachMemory(id, mem)
+
+	s := NewScheduler(m)
+	s.delay = 5 * time.Millisecond
+	s.checkpt = time.Hour
+	s.Start(t.Context())
+
+	// Touch the last coil byte and the first register together.
+	_ = mem.WriteBits(memorycore.AreaCoils, 4, 4, []byte{0b1001})
+	_ = mem.WriteRegs(memorycore.AreaHoldingRegs, 0, 1, []byte{0xAA, 0xBB})
+	s.Close()
+
+	data, _ := os.ReadFile(config.SnapshotPath(dir, id))
+	layout, err := ParseLayout(data)
+	if err != nil {
+		t.Fatalf("snapshot invalid: %v", err)
+	}
+	regs, _ := layout.segmentFor(memorycore.AreaHoldingRegs)
+	got := data[regs.Offset : regs.Offset+8]
+	if got[0] != 0xAA || got[1] != 0xBB {
+		t.Fatalf("first register wrong: %x", got[:2])
+	}
+	// Registers 1..3 must be untouched by the coil write.
+	if got[2] != 0x33 || got[3] != 0x44 || got[4] != 0x55 || got[5] != 0x66 || got[6] != 0x77 || got[7] != 0x88 {
+		t.Fatalf("neighboring segment corrupted: %x", got)
+	}
+}
+
+func TestSchedulerFlushNonAlignedBitSegment(t *testing.T) {
+	// Coils count 12: the last containing byte covers bits 8..11 plus 4 padding
+	// bits. Writing the last nibble must flush without bounds errors and must
+	// not disturb the first byte.
+	dir := t.TempDir()
+	plan := &config.ResolvedPersistence{
+		Directory: dir,
+		Ranges: map[memorycore.MemoryID][]config.ResolvedPersistenceArea{
+			{Port: 502, UnitID: 1}: {{Area: memorycore.AreaCoils, Start: 0, Count: 12}},
+		},
+	}
+	allocs := map[memorycore.MemoryID]config.MemoryAllocation{
+		{Port: 502, UnitID: 1}: {Areas: map[memorycore.Area]config.Area{
+			memorycore.AreaCoils: {Start: 0, Count: 12},
+		}},
+	}
+	m, err := New(plan, allocs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := memorycore.MemoryID{Port: 502, UnitID: 1}
+	mem, err := memorycore.NewMemory(memorycore.MemoryLayouts{Coils: &memorycore.AreaLayout{Start: 0, Size: 12}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.WriteBits(memorycore.AreaCoils, 0, 12, []byte{0b1111_1111, 0b0000_1111}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RestoreMemory(id, mem); err != nil {
+		t.Fatal(err)
+	}
+	m.AttachMemory(id, mem)
+
+	s := NewScheduler(m)
+	s.delay = 5 * time.Millisecond
+	s.checkpt = time.Hour
+	s.Start(t.Context())
+
+	// Clear bit 10 (in the second, non-aligned byte).
+	_ = mem.WriteBits(memorycore.AreaCoils, 10, 1, []byte{0x00})
+	s.Close()
+
+	if m.Failed() {
+		t.Fatalf("flush of non-aligned bit segment failed: %v", m.LastError())
+	}
+	data, _ := os.ReadFile(config.SnapshotPath(dir, id))
+	layout, err := ParseLayout(data)
+	if err != nil {
+		t.Fatalf("snapshot invalid: %v", err)
+	}
+	seg, _ := layout.segmentFor(memorycore.AreaCoils)
+	if data[seg.Offset] != 0xFF {
+		t.Fatalf("first coil byte changed: %08b", data[seg.Offset])
+	}
+	// Bit 10 cleared within the second byte: 0b0000_1011.
+	if data[seg.Offset+1] != 0b0000_1011 {
+		t.Fatalf("second coil byte wrong: %08b", data[seg.Offset+1])
+	}
+}
+
 func TestSchedulerDisabledNoOp(t *testing.T) {
 	m, err := New(nil, nil)
 	if err != nil {
