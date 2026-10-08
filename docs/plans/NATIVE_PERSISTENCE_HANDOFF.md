@@ -5,6 +5,24 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## V01 — Optional-directory and snapshot naming enhancement
+
+Status: PASS (after formatting correction)
+Verification baseline: `main` @ `4f47048d69c539248c350be3f4d9fd6db2af739a`
+Formatting correction: `main` @ `592c275bae9e70d78d453c442431b9bdf3efb595`
+
+- `persistence.enabled: true` without `directory` stores snapshots beside the loaded YAML file, even when the process working directory differs.
+- Explicit `directory` remains supported; two enabled memories can share a directory.
+- Snapshot filenames are now `<port>-<unit_id>.bin` and `.bak`.
+- Startup migrates legacy `mma2-<port>-<unit_id>.bin`/`.bak` snapshots; primary-only, backup-only, interrupted migration, and already-valid new-format cases passed.
+- Mixed enabled/disabled process restart, register read-back, corrupted-primary recovery, failing closed when both images are invalid, and RBE regression passed.
+- Independent QA: `go build ./...`, `go vet ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, `test_multi_memory.py`, `test/rbe_e2e/run_test.sh` all PASS.
+- Initial gofmt FAIL only in `internal/config/persistence_test.go`; subsequent `gofmt -l internal/config/persistence_test.go` produced no output and `go test ./... -count=1` PASS at `592c275`.
+
+Earlier C06/Pxx entries below are historical snapshots of the implementation at the time, including the former mandatory/distinct-directory rule and `mma2-` filename prefix. They do not supersede the current contract in `docs/PERSISTENCE.md`.
+
+---
+
 ## C06 — Final VERIFY of the per-memory migration
 
 Status: PASS
