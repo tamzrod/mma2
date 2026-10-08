@@ -58,12 +58,14 @@ func TestRootPersistenceRejected(t *testing.T) {
 	}
 }
 
-func TestPerMemoryPersistenceRequiresDirectory(t *testing.T) {
+func TestPerMemoryPersistenceDefaultsToYAMLDirectory(t *testing.T) {
 	cfg := persistenceConfig()
-	cfg.Ingress[0].Memory[0].Persistence.Directory = " "
-	if err := Validate(cfg); err == nil {
-		t.Fatal("missing directory accepted")
-	}
+	cfg.Ingress[0].Memory[0].Persistence.Directory = ""
+	cfg.configDir = t.TempDir()
+	plans, err := BuildPerMemoryPersistencePlans(cfg)
+	if err != nil { t.Fatal(err) }
+	id := memorycore.MemoryID{Port: 15030, UnitID: 1}
+	if plans[id].Directory != cfg.configDir { t.Fatalf("default directory = %q; want %q", plans[id].Directory, cfg.configDir) }
 }
 
 func TestPerMemoryPersistenceConfiguredRanges(t *testing.T) {
@@ -102,12 +104,12 @@ func TestPerMemoryPersistenceRejectsInvalidRanges(t *testing.T) {
 	}
 }
 
-func TestPerMemoryPersistenceRejectsSharedDirectory(t *testing.T) {
+func TestPerMemoryPersistenceAllowsSharedDirectory(t *testing.T) {
 	cfg := persistenceConfig()
 	cfg.Ingress[0].Memory[1].Persistence = &MemoryPersistenceConfig{Enabled: true, Directory: "test/snapshots/unit1"}
-	if err := Validate(cfg); err == nil {
-		t.Fatal("shared snapshot directory accepted")
-	}
+	plans, err := BuildPerMemoryPersistencePlans(cfg)
+	if err != nil { t.Fatal(err) }
+	if len(plans) != 2 { t.Fatalf("expected two plans, got %d", len(plans)) }
 }
 
 func TestPerMemoryPersistenceYAMLParsing(t *testing.T) {
@@ -148,7 +150,7 @@ func TestSnapshotFileNamesAreDeterministicAndDistinct(t *testing.T) {
 	a := SnapshotFileName(memorycore.MemoryID{Port: 502, UnitID: 1})
 	b := SnapshotFileName(memorycore.MemoryID{Port: 502, UnitID: 1})
 	c := SnapshotFileName(memorycore.MemoryID{Port: 503, UnitID: 1})
-	if a != b || a == c {
+	if a != b || a == c || a != "502-1.bin" {
 		t.Fatalf("snapshot identity collision: %q %q %q", a, b, c)
 	}
 }
