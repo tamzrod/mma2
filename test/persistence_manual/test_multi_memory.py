@@ -133,7 +133,7 @@ def main():
                 assert read(port, 3) == 0
                 stop(p)
                 p = None
-                primary = d1 / f"mma2-{port}-1.bin"
+                primary = d1 / f"{port}-1.bin"
                 data = bytearray(primary.read_bytes())
                 data[-1] ^= 0x01
                 primary.write_bytes(data)
