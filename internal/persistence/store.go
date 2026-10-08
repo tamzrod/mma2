@@ -164,6 +164,14 @@ func (s *FileStore) ApplyBitByte(byteOffset uint32, bit uint8, set bool) error {
 	return s.applyLocked(byteOffset, current)
 }
 
+// ApplyRange writes an arbitrary byte span at offset and refreshes the CRC of
+// every block it touches, preserving all other bytes.
+func (s *FileStore) ApplyRange(offset uint32, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.applyLocked(offset, data)
+}
+
 // applyLocked writes data at offset and refreshes the CRC of every touched
 // block.
 func (s *FileStore) applyLocked(offset uint32, data []byte) error {

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"net/http"
@@ -96,6 +97,9 @@ func main() {
 	} else {
 		log.Println("persistence disabled")
 	}
+	scheduler := persistence.NewScheduler(persistMgr)
+	scheduler.Start(context.Background())
+	persistMgr.SetNotifier(scheduler.Notify)
 	auth := authority.New()
 	policies, err := config.BuildAuthorityPolicies(cfg)
 	if err != nil {
@@ -107,6 +111,10 @@ func main() {
 	log.Println("authority policies loaded")
 
 	var shutdown []func()
+	if persistMgr.Enabled() {
+		// Flush pending dirty ranges before listeners close and the process exits.
+		shutdown = append(shutdown, scheduler.Close)
+	}
 
 	var notifier *notify.Engine
 	if cfg.RBE == nil {

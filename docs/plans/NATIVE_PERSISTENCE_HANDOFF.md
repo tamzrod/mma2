@@ -5,6 +5,63 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P08 — Runtime dirty scheduler and flush
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/scheduler.go` (new): `Scheduler`, `NewScheduler`,
+  `Start`, `Notify`, `Close`, `flushAll`, `flushIdentity`, `applyRanges`,
+  `readFileSpan`, `maybeCheckpoint`; defaults `DefaultFlushDelay` (50ms) and
+  `DefaultCheckpointInterval` (30s).
+- `internal/persistence/store.go`: `ApplyRange` (positional span write +
+  touched-block CRCs).
+- `internal/persistence/observer.go`: `SetNotifier`; `MarkCommitted` notifies
+  the scheduler after releasing the manager lock.
+- `internal/persistence/lifecycle.go`: `memories` map + `memory(id)`.
+- `cmd/mma2/main.go`: start the scheduler, point the manager's notifier at it,
+  and flush on orderly shutdown (`scheduler.Close` in the shutdown list).
+- `internal/persistence/scheduler_test.go` (new): 6 tests.
+
+### Decisions recorded (with evidence)
+
+1. **Single serialized writer**: one goroutine drains all identities; store
+   methods are also mutex-serialized, so there is never a concurrent file
+   writer.
+2. **Bounded coalescing**: `Notify` arms a 50 ms timer; bursts coalesce before a
+   flush. `DirtySnapshot` drains ranges atomically and the generation counter
+   lets a future iteration detect writes arriving mid-copy.
+3. **Targeted flush**: each dirty byte range is re-read from current memory and
+   applied with `ApplyRange`, refreshing only the touched block CRC(s) — never a
+   whole-file rewrite.
+4. **Checkpoint**: the backup is refreshed (atomic rename) from a primary that
+   has first passed `ParseLayout`, at most once per checkpoint interval. A
+   corrupt primary is never copied over the good backup.
+5. **Shutdown flush**: `scheduler.Close` runs in the shutdown chain so pending
+   dirty ranges reach disk on orderly exit.
+6. **Abrupt-crash contract**: writes since the last completed flush may be lost.
+   Targeted in-place writes are identified by block CRC and recovered from the
+   backup at startup; no atomicity beyond that is claimed.
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ -race -count=1` — pass.
+- Process E2E: Modbus FC6 wrote `0xBEEF` to a persisted holding register; the
+  binary created `mma2-15503-1.bin` + `.bak`; after restart, FC3 read back
+  `0xBEEF` (response `...03 02 beef`). Value survived a full restart.
+
+### Handoff
+
+READY: P09 — Runtime failure handling. Make disk-full/permission/partial-write/
+sync failures observable, keep FAILED sticky with diagnostics, and ensure a
+failure never yields a plausible-looking corrupt snapshot (never overwrite the
+good backup with unvalidated data). Define the retry/recovery policy.
+
+---
+
 ## P07 — Unify committed mutation observation
 
 Status: DONE

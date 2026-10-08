@@ -38,6 +38,12 @@ func (m *Manager) AttachMemory(id memorycore.MemoryID, mem *memorycore.Memory) {
 		return
 	}
 	mem.SetCommittedWriteObserver(memoryObserver{mgr: m, id: id})
+	m.mu.Lock()
+	if m.memories == nil {
+		m.memories = make(map[memorycore.MemoryID]*memorycore.Memory)
+	}
+	m.memories[id] = mem
+	m.mu.Unlock()
 }
 
 // MarkCommitted records the file byte range(s) made dirty by one committed
@@ -66,6 +72,22 @@ func (m *Manager) MarkCommitted(id memorycore.MemoryID, area memorycore.Area, ad
 		m.dirtyGen = make(map[memorycore.MemoryID]uint64)
 	}
 	m.dirtyGen[id]++
+	notify := m.notifier
+	m.mu.Unlock()
+
+	if notify != nil {
+		notify()
+	}
+}
+
+// SetNotifier installs a callback invoked (without holding the manager lock)
+// whenever an identity is marked dirty.
+func (m *Manager) SetNotifier(notify func()) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.notifier = notify
 	m.mu.Unlock()
 }
 

@@ -74,6 +74,11 @@ type Manager struct {
 	// dirty holds coalesced file byte ranges per identity awaiting flush.
 	dirty    map[memorycore.MemoryID][]DirtyRange
 	dirtyGen map[memorycore.MemoryID]uint64
+
+	// memories holds the memory instances for persisted identities, needed by
+	// the flush path to re-read current values.
+	memories map[memorycore.MemoryID]*memorycore.Memory
+	notifier func()
 }
 
 // New constructs the persistence owner from a validated plan. A nil plan yields
@@ -107,7 +112,19 @@ func New(plan *config.ResolvedPersistence, allocations map[memorycore.MemoryID]c
 	}
 	m.dirty = make(map[memorycore.MemoryID][]DirtyRange)
 	m.dirtyGen = make(map[memorycore.MemoryID]uint64)
+	m.memories = make(map[memorycore.MemoryID]*memorycore.Memory)
 	return m, nil
+}
+
+// memory returns the registered memory for an identity.
+func (m *Manager) memory(id memorycore.MemoryID) (*memorycore.Memory, bool) {
+	if m == nil {
+		return nil, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mem, ok := m.memories[id]
+	return mem, ok
 }
 
 // LayoutFor returns the cached fixed layout for an identity, if persisted.
