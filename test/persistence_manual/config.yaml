@@ -1,5 +1,4 @@
-# TARGET per-memory persistence architecture (requires C01-C06 Go migration).
-# This YAML must not be used as proof of persistence until runtime supports it.
+# Standalone per-memory persistence manual test.
 # For manual Modbus Poll testing: connect to <linux-ip>:15030, Unit ID 1.
 listeners:
   - id: persistence-test
