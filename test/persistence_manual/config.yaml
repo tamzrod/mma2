@@ -1,20 +1,20 @@
-# Standalone MMA2 native persistence manual test
-# Run from the repository root with: python3 test/persistence_manual/test.py
-persistence:
-  enabled: true
-  directory: test/persistence_manual/snapshots
-
+# TARGET per-memory persistence architecture (requires C01-C06 Go migration).
+# This YAML must not be used as proof of persistence until runtime supports it.
+# For manual Modbus Poll testing: connect to <linux-ip>:15030, Unit ID 1.
 listeners:
   - id: persistence-test
-    listen: "127.0.0.1:15030"
+    listen: ":15030"
     memory:
       - unit_id: 1
         coils: {start: 0, count: 16}
         discrete_inputs: {start: 0, count: 16}
         holding_registers: {start: 0, count: 32}
         input_registers: {start: 0, count: 16}
+        persistence:
+          enabled: true
+          directory: test/persistence_manual/snapshots
         policy:
           rules:
-            - id: local-test
-              source_ip: [127.0.0.1, "::1"]
+            - id: manual-test
+              source_ip: [0.0.0.0/0]
               allow_fc: [1, 2, 3, 4, 5, 6, 15, 16]
