@@ -131,7 +131,7 @@ func bytesForBits(n uint16) int {
 	if n == 0 {
 		return 0
 	}
-	return int((n + 7) / 8)
+	return (int(n) + 7) / 8
 }
 
 // segmentFor returns the layout for an area, if present.
