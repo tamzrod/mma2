@@ -5,6 +5,44 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P10 — Independent transport coverage
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/transport_coverage_test.go` (new): 4 tests
+  (`TestModbusWritePathsMarkDirty`, `TestModbusReadPathsDoNotMarkDirty`,
+  `TestRawIngestWritePathsMarkDirty`, `TestTransportResponsesUnchangedWithObserver`).
+
+### Decisions recorded (with evidence)
+
+1. **All authoritative writers participate**: with persistence observing a
+   memory, Modbus FC5/6/15/16 and Raw Ingest writes all mark persistence dirty.
+   Covered with RBE **disabled** and **enabled** (the observer is a separate
+   mechanism from RBE; Raw Ingest's direct-write path is covered too).
+2. **Discrete inputs and input registers**: Raw Ingest writes to
+   `discrete_inputs` and `input_registers` mark dirty. This proves the neutral
+   memorycore hook — not the RBE observer — is the universal persistence path.
+3. **Reads never mark dirty**: FC1/2/3/4 produce no dirty ranges.
+4. **Protocol/ACK behavior unchanged**: response PDUs for FC6 and Raw Ingest are
+   byte-identical to the pre-persistence constructs while the observer still
+   fires; persistence adds no protocol drift.
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ -race -count=1` — pass.
+
+### Handoff
+
+READY: P11 — Independence and isolation. Verify State Sealing stays untouched,
+snapshots cannot cross identities, multi-port/multi-UnitID and cross-memory
+concurrency behave, and no RBE transport or external service is needed.
+
+---
+
 ## P09 — Runtime failure handling
 
 Status: DONE
