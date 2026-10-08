@@ -32,11 +32,14 @@ type Listener struct {
 	closed bool
 	active map[net.Conn]struct{}
 	wg sync.WaitGroup
+	closeOnce sync.Once
+	closeDone chan struct{}
+	closeErr error
 }
 
 // NewListener creates a new ingress listener.
 func NewListener(cfg config.IngressGate) *Listener {
-	return &Listener{cfg: cfg, active: make(map[net.Conn]struct{})}
+	return &Listener{cfg: cfg, active: make(map[net.Conn]struct{}), closeDone: make(chan struct{})}
 }
 
 // ListenAndServe starts the TCP listener and dispatches connections.
@@ -96,20 +99,31 @@ func (l *Listener) Close() error {
 	if l == nil {
 		return nil
 	}
-	l.mu.Lock()
-	l.closed = true
-	ln := l.ln
-	l.ln = nil
-	for conn := range l.active {
-		_ = conn.Close()
-	}
-	l.mu.Unlock()
-	var err error
-	if ln != nil {
-		err = ln.Close()
-	}
-	l.wg.Wait()
-	return err
+	l.closeOnce.Do(func() {
+		l.mu.Lock()
+		l.closed = true
+		ln := l.ln
+		l.ln = nil
+		connections := make([]net.Conn, 0, len(l.active))
+		for conn := range l.active {
+			connections = append(connections, conn)
+		}
+		l.mu.Unlock()
+
+		// Never invoke socket Close while holding the listener mutex.
+		if ln != nil {
+			l.closeErr = ln.Close()
+		}
+		for _, conn := range connections {
+			_ = conn.Close()
+		}
+		// Every accepted handler is registered while holding l.mu before
+		// shutdown sets closed, so no new WaitGroup Add can follow.
+		l.wg.Wait()
+		close(l.closeDone)
+	})
+	<-l.closeDone
+	return l.closeErr
 }
 
 func (l *Listener) handleConn(
