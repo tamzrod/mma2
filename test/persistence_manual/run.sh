@@ -2,8 +2,7 @@
 # test/persistence_manual/run.sh
 # Start MMA2 for interactive Modpoll tests.
 # Does NOT delete snapshots: stop and run again to verify persistence.
-# Current branch still uses the legacy root-level persistence config.yaml.
-# Replace config.yaml with per-memory persistence after migration C01-C06.
+# Persistence is enabled per memory in config.yaml; other memories stay disabled.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +28,7 @@ go build -o "$BIN" ./cmd/mma2
 
 echo
 echo "MMA2 persistence manual test"
-echo "  Endpoint: 127.0.0.1:15030"
+echo "  Endpoint: <linux-ip>:15030 (also 127.0.0.1:15030)"
 echo "  Unit ID:  1"
 echo "  Config:   $CONFIG"
 echo "  Storage:  test/persistence_manual/snapshots"
