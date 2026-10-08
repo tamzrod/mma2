@@ -134,7 +134,9 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 
 MMA2 can persist authoritative raw memory to disk, configured **per
 `listeners[].memory[]` entry only**. Each (Port, UnitID) independently enables
-persistence, chooses its directory and optionally selects ranges. Omitted
+persistence, optionally chooses its directory and selects ranges. When no
+snapshot directory is specified, files are saved beside the loaded YAML
+configuration, named by Port and UnitID. Omitted
 persistence means disabled; omitted ranges on an enabled memory persist its
 allocated areas. No root-level persistence setting is supported.
 
