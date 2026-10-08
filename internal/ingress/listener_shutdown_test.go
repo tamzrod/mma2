@@ -45,3 +45,19 @@ func TestCloseWaitsForActiveHandler(t *testing.T) {
     case <-time.After(time.Second): t.Fatal("Close did not wait for handler")
     }
 }
+
+func TestCloseConcurrentCallsAreIdempotent(t *testing.T) {
+    l:=NewListener(config.IngressGate{ID:"concurrent-close"})
+    results:=make(chan error,8)
+    for i:=0;i<8;i++ {
+        go func(){results<-l.Close()}()
+    }
+    for i:=0;i<8;i++ {
+        select {
+        case err:=<-results:
+            if err!=nil {t.Fatal(err)}
+        case <-time.After(2*time.Second):
+            t.Fatal("concurrent Close blocked")
+        }
+    }
+}
