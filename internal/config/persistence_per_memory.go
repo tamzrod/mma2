@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"mma2/internal/memorycore"
 )
@@ -51,7 +50,6 @@ func BuildPerMemoryPersistencePlans(cfg *Config) (map[memorycore.MemoryID]*Resol
 		return nil, fmt.Errorf("root-level persistence is unsupported; configure listeners[].memory[].persistence")
 	}
 	result := make(map[memorycore.MemoryID]*ResolvedPersistence)
-	directories := make(map[string]memorycore.MemoryID)
 	for li, l := range cfg.Ingress {
 		if len(l.Memory) == 0 {
 			continue
@@ -66,18 +64,18 @@ func BuildPerMemoryPersistencePlans(cfg *Config) (map[memorycore.MemoryID]*Resol
 				continue
 			}
 			path := fmt.Sprintf("listeners[%d].memory[%d].persistence", li, mi)
-			if strings.TrimSpace(p.Directory) == "" {
-				return nil, fmt.Errorf("%s.directory is required", path)
+			dirName := p.Directory
+			if dirName == "" {
+				dirName = cfg.configDir
 			}
-			dir, err := filepath.Abs(filepath.Clean(p.Directory))
+			if dirName == "" {
+				dirName = "."
+			}
+			dir, err := filepath.Abs(filepath.Clean(dirName))
 			if err != nil {
 				return nil, fmt.Errorf("%s.directory: %w", path, err)
 			}
 			id := memorycore.MemoryID{Port: port, UnitID: mem.UnitID}
-			if prev, ok := directories[dir]; ok {
-				return nil, fmt.Errorf("%s.directory conflicts with identity (port=%d unit=%d); use distinct directories", path, prev.Port, prev.UnitID)
-			}
-			directories[dir] = id
 			if _, ok := result[id]; ok {
 				return nil, fmt.Errorf("%s: duplicate memory identity", path)
 			}
