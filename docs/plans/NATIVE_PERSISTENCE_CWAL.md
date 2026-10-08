@@ -5,11 +5,11 @@
 > persistence setting. That design is SUPERSEDED. `persistence` is permitted
 > only in `listeners[].memory[]`; each memory owns its own `enabled`,
 > `directory` and optional `ranges`. There is NO global persistence config.
-> The original task chain and handoff are historical evidence, NOT a current
-> PASS/merge approval. Update code/config/tests and repeat VERIFY before merge.
+> The original P01–P13 task chain is historical. The C01–C06 per-memory
+> migration and independent verification are complete (PASS, PR #22 merged).
 > See `docs/PERSISTENCE.md` for the canonical new contract.
 
-## Per-memory correction chain (implementation committed; final VERIFY pending)
+## Per-memory correction chain (C01–C06 PASS)
 
 - C01 — IMPLEMENTED: Move persistence YAML schema to `MemoryDefinition`; reject root-level block; per-memory disabled default.
 - C02 — IMPLEMENTED: Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
@@ -120,6 +120,8 @@ Gate: no unresolved HARD assumptions, protocol drift, concurrency races, partial
 
 For each Pxx: inspect bounded files; list HARD/SOFT assumptions; implement only one micro-task; add tests; run tests; commit; normal non-force push; record paths, exact test command/results and SHA; update handoff; stop. Do not merge or force push. Do not implement during this planning invocation.
 
-## First CODE handoff
+## Historical CODE handoff
 
-SUPERSEDED: P01 previously completed under the global schema. The next implementation task is C01 — per-memory schema and rejection of root-level persistence. Before CODE, recheck main/branch state and read live `internal/config/config.go`, config validation/loading files, examples, and startup wiring. Resolve config placement, path and ranges by evidence; implement only P01; tests, commit and non-force push; hand off P02.
+SUPERSEDED: This handoff was written before the per-memory migration.
+C01–C06 are complete and verified on `main`. Do not treat the old P01
+handoff as an outstanding implementation task.
