@@ -67,8 +67,11 @@ listeners:
 ## Identity, files, and disk behavior
 
 Identity remains `(Port:uint16, UnitID:uint16)`. Each enabled memory owns
-`<port>-<unit_id>.bin` and `<port>-<unit_id>.bak` in **its own**
-configured directory. The default is the directory containing the loaded YAML file; multiple memories may share that directory. Existing legacy `mma2-<port>-<unit_id>` snapshot pairs are migrated on startup.
+`<port>-<unit_id>.bin` and `<port>-<unit_id>.bak` in its resolved
+snapshot directory. By default, that is the directory containing the loaded
+YAML file; multiple memories may share it. Existing legacy
+`mma2-<port>-<unit_id>.bin`/`.bak` files in the selected directory are
+migrated on startup.
 
 The snapshot is fixed-offset binary: versioned metadata, 256-byte CRC32 payload
 blocks, LSB-first bits, big-endian registers, targeted writes and background
@@ -126,7 +129,8 @@ per-memory definitions. Ensure another MMA2 process does not already own port
   the last completed disk flush can be lost after an abrupt termination.
 - A bad primary is detected with CRC32 and restored from a valid backup. The
   backup runs on a 60-second interval; recovery can roll state back.
-- The snapshot directory defaults to the YAML configuration folder when omitted.
-  Explicit directories are optional; storage requires filesystem write access.
-  New filenames use `<port>-<unit_id>.bin` and `.bak` with startup migration
-  from the previous `mma2-` prefix.
+- Independent optional-directory V01 verification at `4f47048` passed build,
+  vet, full Go tests, race detection, restart/restore cases, migration, shared
+  directory and RBE process regression. The isolated formatting issue was
+  corrected at `592c275`; subsequent `gofmt -l` and `go test ./... -count=1`
+  passed. Snapshot storage requires filesystem write access.
