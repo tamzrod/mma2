@@ -342,3 +342,34 @@ func TestSchedulerDisabledNoOp(t *testing.T) {
 	s.Notify()
 	s.Close()
 }
+
+func TestSchedulerContinuousWritesCannotStarveFlush(t *testing.T) {
+    m,s,dir,id,mem:=scheduleManager(t)
+    _=m
+    s.delay=25*time.Millisecond
+    s.Start(context.Background())
+    defer s.Close()
+    // Faster than the coalescing delay for long enough to expose timer resets.
+    stop:=time.After(250*time.Millisecond)
+    ticker:=time.NewTicker(2*time.Millisecond)
+    defer ticker.Stop()
+    n:=uint16(0)
+    for {
+        select {
+        case <-stop:
+            // Allow any scheduled flush to finish before checking.
+            s.Close()
+            store:=NewFileStore(config.SnapshotPath(dir,id))
+            image,err:=store.ReadPrimary()
+            if err!=nil {t.Fatal(err)}
+            if _,err:=ParseLayout(image);err!=nil {t.Fatal(err)}
+            if m.Diagnostics().LastSaveAt.IsZero() {
+                t.Fatal("continuous notifications starved scheduled persistence flush")
+            }
+            return
+        case <-ticker.C:
+            n++
+            if err:=mem.WriteRegs(memorycore.AreaHoldingRegs,5,1,[]byte{byte(n>>8),byte(n)});err!=nil {t.Fatal(err)}
+        }
+    }
+}
