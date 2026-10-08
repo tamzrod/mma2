@@ -124,6 +124,8 @@ def main():
                 proc = start(binary, log)
                 assert read_register(3) == 0
                 assert read_coil(5) is False
+                backup = SNAPS / f"mma2-{PORT}-{UNIT}.bak"
+                initial_backup = backup.read_bytes()
 
                 print("[2/5] FC6 and FC5 writes; wait for targeted disk flush", flush=True)
                 write_register(3, 0xBEEF)
@@ -134,6 +136,8 @@ def main():
                 primary = SNAPS / f"mma2-{PORT}-{UNIT}.bin"
                 backup = SNAPS / f"mma2-{PORT}-{UNIT}.bak"
                 assert primary.is_file() and backup.is_file(), "snapshot pair missing"
+                assert backup.read_bytes() == initial_backup, "backup was overwritten before 60-second interval"
+                assert primary.read_bytes() != initial_backup, "primary did not receive targeted updates"
                 print(f"      primary={primary.name} ({primary.stat().st_size} bytes)")
                 print(f"      backup ={backup.name} ({backup.stat().st_size} bytes)")
                 stop(proc)
@@ -154,10 +158,11 @@ def main():
                     f.seek(-1, 2)
                     f.write(bytes([old[0] ^ 0x01]))
                 proc = start(binary, log)
-                # Initial backup contains the original all-zero state.
+                # Backup was verified byte-for-byte unchanged before corruption.
                 assert read_register(3) == 0
                 assert read_coil(5) is False
-                print("      backup fallback PASS (expected earlier zero state)")
+                assert primary.read_bytes() == initial_backup, "primary was not rebuilt from verified backup"
+                print("      backup fallback PASS (verified baseline image restored)")
                 stop(proc)
                 proc = None
 
