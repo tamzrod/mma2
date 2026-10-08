@@ -30,11 +30,13 @@ type Listener struct {
 	mu     sync.Mutex
 	ln     net.Listener
 	closed bool
+	active map[net.Conn]struct{}
+	wg sync.WaitGroup
 }
 
 // NewListener creates a new ingress listener.
 func NewListener(cfg config.IngressGate) *Listener {
-	return &Listener{cfg: cfg}
+	return &Listener{cfg: cfg, active: make(map[net.Conn]struct{})}
 }
 
 // ListenAndServe starts the TCP listener and dispatches connections.
