@@ -15,7 +15,7 @@
 # debug: true
 
 # Native persistence is configured per memory entry only.
-# Target schema: listeners[].memory[].persistence (implementation migration pending).
+# Schema: listeners[].memory[].persistence.
 # There is no root-level persistence configuration.
 
 listeners:
@@ -32,8 +32,7 @@ listeners:
       - unit_id: 1
 
         # Per-memory persistence (disabled when omitted).
-        # Requires per-memory schema migration before use.
-        # persistence:
+                # persistence:
         #   enabled: true
         #   directory: /var/lib/mma2/unit1
         # Omit ranges to persist all areas allocated to this memory.
