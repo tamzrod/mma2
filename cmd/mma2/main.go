@@ -68,38 +68,40 @@ func main() {
 		log.Fatalf("memory build failed: %v", err)
 	}
 
-	// Native persistence: build the owner, then restore before any listener
-	// accepts connections. A corrupt/incompatible snapshot fails closed.
-	persistPlan, err := config.BuildPersistencePlan(cfg)
+	// Native persistence is exclusively configured on each memory definition.
+	// Each enabled identity owns its own manager, directory and backup schedule.
+	persistPlans, err := config.BuildPerMemoryPersistencePlans(cfg)
 	if err != nil {
 		log.Fatalf("persistence validation failed: %v", err)
 	}
-	persistMgr, err := persistence.New(persistPlan, config.BuildMemoryAllocations(cfg))
-	if err != nil {
-		log.Fatalf("persistence init failed: %v", err)
-	}
-	if persistMgr.Enabled() {
-		if err := os.MkdirAll(persistMgr.Directory(), 0o755); err != nil {
-			log.Fatalf("persistence: create directory %s: %v", persistMgr.Directory(), err)
+	var persistenceShutdown []func()
+	for mid, plan := range persistPlans {
+		mgr, err := persistence.New(plan, map[memorycore.MemoryID]config.MemoryAllocation{
+			mid: config.BuildMemoryAllocations(cfg)[mid],
+		})
+		if err != nil {
+			log.Fatalf("persistence init failed (port=%d unit=%d): %v", mid.Port, mid.UnitID, err)
 		}
-		for _, mid := range persistMgr.PersistedIdentities() {
-			mem, err := store.MustGet(mid)
-			if err != nil {
-				log.Fatalf("persistence: memory (port=%d unit=%d) missing: %v", mid.Port, mid.UnitID, err)
-			}
-			if err := persistMgr.RestoreMemory(mid, mem); err != nil {
-				log.Fatalf("persistence restore failed (failing closed): %v", err)
-			}
-			// Observe committed writes from every transport for this identity.
-			persistMgr.AttachMemory(mid, mem)
+		if err := os.MkdirAll(mgr.Directory(), 0o755); err != nil {
+			log.Fatalf("persistence: create directory %s: %v", mgr.Directory(), err)
 		}
-		log.Printf("persistence ready: %d identities, directory %s", len(persistMgr.PersistedIdentities()), persistMgr.Directory())
-	} else {
-		log.Println("persistence disabled")
+		mem, err := store.MustGet(mid)
+		if err != nil {
+			log.Fatalf("persistence memory missing (port=%d unit=%d): %v", mid.Port, mid.UnitID, err)
+		}
+		if err := mgr.RestoreMemory(mid, mem); err != nil {
+			log.Fatalf("persistence restore failed (failing closed): %v", err)
+		}
+		mgr.AttachMemory(mid, mem)
+		scheduler := persistence.NewScheduler(mgr)
+		scheduler.Start(context.Background())
+		mgr.SetNotifier(scheduler.Notify)
+		persistenceShutdown = append(persistenceShutdown, scheduler.Close)
+		log.Printf("persistence ready: port=%d unit=%d directory=%s", mid.Port, mid.UnitID, mgr.Directory())
 	}
-	scheduler := persistence.NewScheduler(persistMgr)
-	scheduler.Start(context.Background())
-	persistMgr.SetNotifier(scheduler.Notify)
+	if len(persistPlans) == 0 {
+		log.Println("persistence disabled (no enabled memories)")
+	}
 	auth := authority.New()
 	policies, err := config.BuildAuthorityPolicies(cfg)
 	if err != nil {
@@ -111,10 +113,7 @@ func main() {
 	log.Println("authority policies loaded")
 
 	var shutdown []func()
-	if persistMgr.Enabled() {
-		// Flush pending dirty ranges before listeners close and the process exits.
-		shutdown = append(shutdown, scheduler.Close)
-	}
+	shutdown = append(shutdown, persistenceShutdown...)
 
 	var notifier *notify.Engine
 	if cfg.RBE == nil {
