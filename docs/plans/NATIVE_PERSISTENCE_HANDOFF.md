@@ -5,6 +5,45 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P11 — Independence and isolation
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/isolation_test.go` (new): 5 tests.
+
+### Decisions recorded (with evidence)
+
+1. **Snapshots cannot cross identities**: distinct `(Port, UnitID)` pairs get
+   distinct files and restore only their own values
+   (`TestSnapshotsIsolatedPerIdentity`).
+2. **State Sealing untouched**: persistence neither reads nor writes the sealing
+   metadata or its coil; the sealing flag survives restore unchanged
+   (`TestStateSealingUnaffected`).
+3. **Multi-port / multi-UnitID**: port 502 unit 1, port 503 unit 1, and port 502
+   unit 2 are independent, matching the locked `(Port, UnitID)` identity.
+4. **Cross-memory concurrency**: 60 concurrent writes across three identities,
+   flushed together, each restore into a fresh manager yields that identity's own
+   value under `-race`.
+5. **No external dependency**: restore works with no listeners, no RBE, and no
+   network (`TestNoExternalServiceRequired`).
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ -race -count=1` — pass.
+
+### Handoff
+
+READY: P12 — Integration, regression and documentation. End-to-end restart test,
+missing/corrupt/incompatible cases, range/layout changes, orderly shutdown,
+docs and examples; confirm old behavior is preserved when persistence is
+disabled.
+
+---
+
 ## P10 — Independent transport coverage
 
 Status: DONE
