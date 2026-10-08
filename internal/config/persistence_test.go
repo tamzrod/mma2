@@ -42,7 +42,7 @@ func TestPerMemoryPersistenceIsolation(t *testing.T) {
 
 func TestRootPersistenceRejected(t *testing.T) {
     cfg:=persistenceConfig()
-    cfg.Persistence=&PersistenceConfig{Enabled:true,Directory:"/tmp/global"}
+    cfg.Persistence=&PersistenceConfig{}
     if err:=Validate(cfg);err==nil || !strings.Contains(err.Error(),"root-level") {
         t.Fatalf("root persistence must be rejected, got %v",err)
     }
