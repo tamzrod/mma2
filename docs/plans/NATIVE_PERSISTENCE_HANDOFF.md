@@ -5,6 +5,165 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P06 — Startup restore orchestration
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/restore.go` (new): `Manager.RestoreMemory`,
+  `Manager.PersistMemory`, `Directory`, `layoutFor`, `buildMemoryImage`,
+  `readSegment`, `applyPayload`, `sameLayout`, `validatePayloadRange`.
+- `internal/persistence/lifecycle.go`: added `PersistedIdentities` (deterministic
+  ascending port/unit order).
+- `internal/persistence/restore_test.go` (new): 8 tests.
+- `cmd/mma2/main.go`: after `BuildMemoryStore` and before any listener starts,
+  build the persistence plan + manager, create the directory, and restore every
+  persisted identity. Any restore error `log.Fatalf`s (fails closed).
+
+### Decisions recorded (with evidence)
+
+1. **Ordering**: restore runs after `config.BuildMemoryStore` (memory allocated)
+   and before the ingress loop starts (`main.go`). Listeners therefore never
+   expose unrestored memory.
+2. **Missing snapshot**: normal initial memory values are captured and written as
+   the first snapshot via atomic `ReplaceAtomic`.
+3. **Corrupt/incompatible snapshot fails closed**: `ParseLayout` rejects bad
+   magic/version/CRC; identity and full layout (segments, offsets, lengths,
+   counts) must match configuration. On failure the manager becomes FAILED and
+   startup aborts; memory is never partly restored (all segments validated
+   before any `applyPayload`).
+4. **Cross-package integration via raw memorycore primitives**: restore and
+   persistence reads use the existing public `ReadBits`/`ReadRegs`/
+   `WriteBits`/`WriteRegs`, so persistence needs no new memorycore API and no
+   coupling. Writes land under each memory's own lock.
+5. **No TCP loopback**: restore reads memory directly and, on first run, writes
+   the image using values read from memory; nothing is sent over a socket.
+
+### Evidence
+
+- `go vet ./...`, `go build ./...` — clean.
+- `go test ./... -count=1` — all packages pass (incl. `internal/persistence`).
+- `go test ./internal/persistence/ -race` — pass.
+- Process smoke test: binary started twice against the same directory; first run
+  logged `persistence ready: 1 identities` and created
+  `state/mma2-15502-1.bin` (52 bytes) before `ingress ... listening`; second run
+  restored it and also logged ready. Snapshot is parseable.
+
+### Handoff
+
+READY: P07 — Unify committed mutation observation. Introduce a canonical
+committed-write hook (no memorycore coupling, no disk IO in memorycore) so every
+successful bit/register commit from any writer marks persistence dirty exactly
+once; failed writes never mark dirty.
+
+---
+
+## P05 — Binary disk store and targeted writes
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/store.go` (new): `FileStore` with `ReplaceAtomic`
+  (temp file + fsync + rename + dir fsync + stale-temp cleanup), `WriteWord`
+  (2-byte big-endian positional), `WriteBitByte` (read-modify-write one bit in
+  its containing byte), `Sync`, `ReadAll`, `Exists`. All public methods
+  serialized by a mutex.
+- `internal/persistence/store_test.go` (new): 6 tests, including concurrent
+  targeted writes under `-race`.
+
+### Decisions recorded (with evidence)
+
+1. **Atomic for create/rebuild only**: `ReplaceAtomic` is file-level atomic
+   (rename). Targeted `WriteWord`/`WriteBitByte` preserve unaffected bytes but
+   are NOT power-loss atomic; documented explicitly in the type comment.
+2. **Durability contract**: targeted writes are visible to subsequent reads
+   immediately (page cache) but durable only after an explicit `Sync`. No
+   implied per-write durability; the caller's sync schedule defines it.
+3. **Stale temp cleanup**: leftovers matching `<base>.tmp-*` are removed before
+   each replacement, so an interrupted replacement cannot accumulate or confuse.
+4. **No inter-process lock**: two processes sharing one directory will corrupt
+   each other; operators must use distinct directories (carried from P01).
+
+### Evidence
+
+- `go vet ./internal/persistence/` — clean.
+- `go test ./internal/persistence/ -count=1 -race` — pass.
+
+---
+
+## P04 — Fixed-offset binary snapshot format and codec
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/format.go` (new): `SegmentLayout`, `Layout`,
+  `NewLayout`, `EncodeHeader`, `ParseLayout`, `BuildSnapshot`,
+  `RegisterOffset`, `BitByteOffset`.
+- `internal/persistence/format_test.go` (new): 5 tests.
+
+### Decisions recorded (with evidence)
+
+1. **Layout**: `[24-byte header][16 * N descriptors][4-byte header CRC][payload]`.
+   Header carries magic `MMA2PERS`, version `1`, `(Port, UnitID)`, segment count,
+   and payload start. Each descriptor carries area, start, count, file offset and
+   payload length. Register value is always the low 16 bits.
+2. **Checksum coverage**: the CRC32 covers only the header and descriptors, never
+   the payload — so a single word/bit update never rewrites or rehashes the whole
+   file. This is the revised contract from `d8c9fe4`.
+3. **Deterministic offsets**: `PayloadStart = 24 + 16*N + 4`; segments laid out in
+   the resolver's deterministic order; `TotalSize = PayloadStart + Σ lengths`.
+   Length = `ceil(count/8)` for bit-areas, `count*2` for register-areas.
+4. **Targeted offset helpers**: `RegisterOffset` (2 bytes) and `BitByteOffset`
+   (containing byte + bit index), both verifying the address is inside a
+   persisted segment.
+5. **Parse rejects**: short/truncated files, bad magic, unsupported version,
+   header CRC mismatch, zero-count or malformed descriptors, wrong descriptor
+   length, non-contiguous/mismatched offsets, and truncated payload.
+
+### Evidence
+
+- `go test ./internal/persistence/ -count=1` — pass (roundtrip + tamper cases).
+
+---
+
+## P03 — Internal persistence lifecycle and diagnostics
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/lifecycle.go` (new): `State`
+  (DISABLED/RESTORING/READY/FAILED), `Diagnostics`, `Manager`, `New`,
+  `Enabled`, `State`, `Segments`, `Diagnostics`, and internal transition helpers.
+- `internal/persistence/lifecycle_test.go` (new): 5 tests.
+
+### Decisions recorded (with evidence)
+
+1. **Persistence owner**: `Manager` holds the resolved ordered segments per
+   identity and lifecycle state; it is entirely internal and separate from State
+   Sealing.
+2. **State model**: `New(nil, ...)` → DISABLED; a non-nil plan starts in
+   RESTORING and only becomes READY after a successful restore (P06). FAILED is
+   sticky and records the last error and timestamp.
+3. **Diagnostics**: snapshot of state, directory, identity/segment counts, and
+   last error/restore/save times — loggable, read-only, no new control plane.
+4. **No protocol surface**: no Modbus coil, State Sealing address, RBE rule, or
+   external service is used to observe or control persistence state.
+
+### Evidence
+
+- `go test ./internal/persistence/ -count=1` — pass.
+- `go vet ./internal/persistence/` — clean.
+
+---
+
 ## P02 — Persisted-range resolver
 
 Status: DONE

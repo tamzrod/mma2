@@ -17,6 +17,7 @@ import (
 	"mma2/internal/ingress"
 	"mma2/internal/memorycore"
 	"mma2/internal/notify"
+	"mma2/internal/persistence"
 	"mma2/internal/rbe"
 	"mma2/internal/transport/modbus"
 	"mma2/internal/transport/rawingest"
@@ -64,6 +65,34 @@ func main() {
 	store, err := config.BuildMemoryStore(cfg)
 	if err != nil {
 		log.Fatalf("memory build failed: %v", err)
+	}
+
+	// Native persistence: build the owner, then restore before any listener
+	// accepts connections. A corrupt/incompatible snapshot fails closed.
+	persistPlan, err := config.BuildPersistencePlan(cfg)
+	if err != nil {
+		log.Fatalf("persistence validation failed: %v", err)
+	}
+	persistMgr, err := persistence.New(persistPlan, config.BuildMemoryAllocations(cfg))
+	if err != nil {
+		log.Fatalf("persistence init failed: %v", err)
+	}
+	if persistMgr.Enabled() {
+		if err := os.MkdirAll(persistMgr.Directory(), 0o755); err != nil {
+			log.Fatalf("persistence: create directory %s: %v", persistMgr.Directory(), err)
+		}
+		for _, mid := range persistMgr.PersistedIdentities() {
+			mem, err := store.MustGet(mid)
+			if err != nil {
+				log.Fatalf("persistence: memory (port=%d unit=%d) missing: %v", mid.Port, mid.UnitID, err)
+			}
+			if err := persistMgr.RestoreMemory(mid, mem); err != nil {
+				log.Fatalf("persistence restore failed (failing closed): %v", err)
+			}
+		}
+		log.Printf("persistence ready: %d identities, directory %s", len(persistMgr.PersistedIdentities()), persistMgr.Directory())
+	} else {
+		log.Println("persistence disabled")
 	}
 	auth := authority.New()
 	policies, err := config.BuildAuthorityPolicies(cfg)

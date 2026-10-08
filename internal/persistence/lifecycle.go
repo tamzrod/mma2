@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -118,6 +119,29 @@ func (m *Manager) Segments(id memorycore.MemoryID) ([]Segment, bool) {
 	defer m.mu.Unlock()
 	segs, ok := m.segments[id]
 	return segs, ok
+}
+
+// PersistedIdentities returns the identities with resolved segments, in a
+// deterministic order (ascending port, then unit id). It returns nil when
+// persistence is disabled.
+func (m *Manager) PersistedIdentities() []memorycore.MemoryID {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	ids := make([]memorycore.MemoryID, 0, len(m.segments))
+	for id := range m.segments {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+
+	sort.Slice(ids, func(i, j int) bool {
+		if ids[i].Port != ids[j].Port {
+			return ids[i].Port < ids[j].Port
+		}
+		return ids[i].UnitID < ids[j].UnitID
+	})
+	return ids
 }
 
 // Diagnostics returns a consistent snapshot of the manager's observable state.
