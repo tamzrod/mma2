@@ -9,17 +9,17 @@
 > PASS/merge approval. Update code/config/tests and repeat VERIFY before merge.
 > See `docs/PERSISTENCE.md` for the canonical new contract.
 
-## Required correction chain (NOT IMPLEMENTED)
+## Per-memory correction chain (implementation committed; final VERIFY pending)
 
-- C01 — Move persistence YAML schema to `MemoryDefinition`; reject root-level block; per-memory disabled default.
-- C02 — Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
-- C03 — Resolve per-memory persistence plan using listener-derived `(Port, UnitID)`; disabled memories excluded; no global enable/ranges/directory.
-- C04 — Wire runtime startup restore, memory observers and 60-second backup schedule only for enabled memories, each with local storage path.
-- C05 — Update canonical example and manual test YAML; add mixed enabled/disabled multi-port/multi-unit restart and backup-fallback process tests.
-- C06 — Run full Go tests, race detector, manual process test and independent architecture VERIFY; record SHAs and evidence. Do not merge until all PASS.
+- C01 — IMPLEMENTED: Move persistence YAML schema to `MemoryDefinition`; reject root-level block; per-memory disabled default.
+- C02 — IMPLEMENTED: Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
+- C03 — IMPLEMENTED: Resolve per-memory persistence plan using listener-derived `(Port, UnitID)`; disabled memories excluded; no global enable/ranges/directory.
+- C04 — IMPLEMENTED: Wire runtime startup restore, memory observers and 60-second backup schedule only for enabled memories, each with local storage path.
+- C05 — PARTIAL: Canonical/manual YAML updated; previous manual process test covers restart and backup fallback for one enabled memory. Mixed enabled/disabled multi-port process-level regression remains to verify.
+- C06 — PENDING: Run Go tests, race detector, current manual process test and independent architecture VERIFY; record SHAs and evidence. Operator reports successful hands-on persistence test, not a replacement for full VERIFY. Do not merge until all PASS.
 
 
-Status: PLANNED — NO PRODUCT CODE IMPLEMENTED
+Status: HISTORICAL P01–P13 PLAN; per-memory migration implementation committed, final VERIFY pending
 Branch: feature/native-persistence
 Base: main
 Mode: CODE one bounded task at a time, then independent VERIFY.
