@@ -9,20 +9,35 @@
 > migration and independent verification are complete (PASS, PR #22 merged).
 > See `docs/PERSISTENCE.md` for the canonical new contract.
 
-## Per-memory correction chain (C01–C06 PASS)
+## Current status — optional directory V01 PASS
+
+After C01–C06, `main` gained the optional `persistence.directory` behavior:
+when enabled and omitted, snapshots are stored beside the loaded YAML file.
+Explicit directories remain supported. Multiple enabled memories may share a
+directory because names use `<port>-<unit_id>.bin` and `.bak`. Legacy
+`mma2-<port>-<unit_id>` files are migrated on startup.
+
+Independent V01 verification at `4f47048` passed build, vet, unit/integration,
+race, YAML-folder and alternate-working-directory cases, shared-directory
+process recovery, filename migration, corruption recovery, and RBE regression.
+A gofmt failure in `internal/config/persistence_test.go` was corrected at
+`592c275`; subsequent independent `gofmt -l` and `go test ./... -count=1`
+both passed. The optional-directory enhancement is verified and complete.
+
+## Historical per-memory correction chain (C01–C06 PASS)
 
 - C01 — IMPLEMENTED: Move persistence YAML schema to `MemoryDefinition`; reject root-level block; per-memory disabled default.
-- C02 — IMPLEMENTED: Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
+- C02 — HISTORICAL IMPLEMENTATION: Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists. The original prohibition on shared directories was removed by the later optional-directory enhancement.
 - C03 — IMPLEMENTED: Resolve per-memory persistence plan using listener-derived `(Port, UnitID)`; disabled memories excluded; no global enable/ranges/directory.
 - C04 — IMPLEMENTED: Wire runtime startup restore, memory observers and 60-second backup schedule only for enabled memories, each with local storage path.
 - C05 — DONE: Canonical/manual YAML updated; `test/persistence_manual/test_multi_memory.py` covers a real-binary mixed enabled/disabled multi-memory run (units 1 and 2 enabled with own directories, unit 3 disabled), restart restore, corrupt-primary fallback, and cross-memory isolation. PASS.
 - C06 — PASS: `go vet ./...` clean; `go test ./... -count=1` and `go test -race ./... -count=1` green; `test_multi_memory.py` real-binary PASS; `test/rbe_e2e/run_test.sh` PASS; independent architecture review against the per-memory contract found no unresolved HARD assumptions. No merge performed (already merged via PR #22).
 
 
-Status: PER-MEMORY MIGRATION COMPLETE; C01–C06 PASS
+Status: PER-MEMORY MIGRATION COMPLETE; C01–C06 PASS; OPTIONAL-DIRECTORY V01 PASS
 Branch: merged to `main` via PR #22 (head `55366d6`); this VERIFY ran at `main` 4761fd7
 Base: main
-Mode: CODE one bounded task at a time, then independent VERIFY.
+Mode: Historical execution plan (completed); not an outstanding CODE task.
 
 ## Locked contract
 
