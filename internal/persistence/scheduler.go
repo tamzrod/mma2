@@ -51,6 +51,13 @@ func NewScheduler(mgr *Manager) *Scheduler {
 	if mgr == nil || !mgr.Enabled() {
 		return &Scheduler{stopped: closedChan()}
 	}
+	// An initial verified backup already exists after RestoreMemory.
+	// Start the 60-second clock now, not on the first dirty flush.
+	lastCkpt := make(map[memorycore.MemoryID]time.Time)
+	started := time.Now()
+	for _, id := range mgr.PersistedIdentities() {
+		lastCkpt[id] = started
+	}
 	return &Scheduler{
 		mgr:      mgr,
 		delay:    DefaultFlushDelay,
@@ -58,7 +65,7 @@ func NewScheduler(mgr *Manager) *Scheduler {
 		wake:     make(chan struct{}, 1),
 		stop:     make(chan struct{}),
 		stopped:  make(chan struct{}),
-		lastCkpt: make(map[memorycore.MemoryID]time.Time),
+		lastCkpt: lastCkpt,
 	}
 }
 
