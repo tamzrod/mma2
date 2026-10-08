@@ -1,5 +1,24 @@
 # MMA2 Native Persistence — Operation CWAL Task Chain
 
+> **ARCHITECTURE OVERRIDE — PER MEMORY (2026-10-08, LOCKED).** The original
+> planning tasks and completed P01–P13 implementation assumed a root-level
+> persistence setting. That design is SUPERSEDED. `persistence` is permitted
+> only in `listeners[].memory[]`; each memory owns its own `enabled`,
+> `directory` and optional `ranges`. There is NO global persistence config.
+> The original task chain and handoff are historical evidence, NOT a current
+> PASS/merge approval. Update code/config/tests and repeat VERIFY before merge.
+> See `docs/PERSISTENCE.md` for the canonical new contract.
+
+## Required correction chain (NOT IMPLEMENTED)
+
+- C01 — Move persistence YAML schema to `MemoryDefinition`; reject root-level block; per-memory disabled default.
+- C02 — Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
+- C03 — Resolve per-memory persistence plan using listener-derived `(Port, UnitID)`; disabled memories excluded; no global enable/ranges/directory.
+- C04 — Wire runtime startup restore, memory observers and 60-second backup schedule only for enabled memories, each with local storage path.
+- C05 — Update canonical example and manual test YAML; add mixed enabled/disabled multi-port/multi-unit restart and backup-fallback process tests.
+- C06 — Run full Go tests, race detector, manual process test and independent architecture VERIFY; record SHAs and evidence. Do not merge until all PASS.
+
+
 Status: PLANNED — NO PRODUCT CODE IMPLEMENTED
 Branch: feature/native-persistence
 Base: main
@@ -8,7 +27,7 @@ Mode: CODE one bounded task at a time, then independent VERIFY.
 ## Locked contract
 
 - Persistence is native disk-backed state for MMA2's existing authoritative raw memory, not a transport, RBE subscriber, or State Sealing mechanism.
-- Configuration defaults to disabled; `persistence.enabled: true` with no ranges persists every configured area of every configured memory identity, unless planning discovers and records a justified explicit scoping alternative.
+- SUPERSEDED: root/global persistence design. Current rule: `listeners[].memory[].persistence.enabled: true` applies only to its owning memory; omitted ranges persist all allocated areas of that memory; each memory owns its directory.
 - Identity remains `(Port:uint16, UnitID:uint16)`, derived from the listener and UnitID; never from YAML keys or IP.
 - Optional ranges are explicit, inside allocated areas, never silently clamped/remapped. Unselected data initializes normally.
 - Restore from validated disk snapshots occurs before protocol listeners expose restored memory. Corrupt/incompatible snapshots fail closed without partial exposure.
@@ -103,4 +122,4 @@ For each Pxx: inspect bounded files; list HARD/SOFT assumptions; implement only 
 
 ## First CODE handoff
 
-READY: P01 — Schema and validation. Before CODE, recheck main/branch state and read live `internal/config/config.go`, config validation/loading files, examples, and startup wiring. Resolve config placement, path and ranges by evidence; implement only P01; tests, commit and non-force push; hand off P02.
+SUPERSEDED: P01 previously completed under the global schema. The next implementation task is C01 — per-memory schema and rejection of root-level persistence. Before CODE, recheck main/branch state and read live `internal/config/config.go`, config validation/loading files, examples, and startup wiring. Resolve config placement, path and ranges by evidence; implement only P01; tests, commit and non-force push; hand off P02.
