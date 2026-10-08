@@ -3,9 +3,8 @@
 > **Architecture decision:** persistence is exclusively a property of each
 > `listeners[].memory[]` entry. There is **no root/global `persistence` block**,
 > no global enable flag, no global persistence directory, and no global range
-> selector. This per-memory design is implemented and verified on
-> `feature/native-persistence` (PR #22). The YAML below is supported by that
-> branch; it becomes available on `main` when the PR is merged.
+> selector. This per-memory design is implemented on `main`, merged in
+> PR #22, and independently verified under CWAL C05/C06.
 
 Native persistence stores raw MMA2 memory on disk, independently of RBE, Modbus
 transport, and State Sealing. Each `(Port, UnitID)` decides whether and what
@@ -115,7 +114,8 @@ per-memory definitions. Ensure another MMA2 process does not already own port
 
 ## Verification and limitations
 
-- The operator reports that per-memory persistence now works in manual testing.
+- Manual persistence restart testing was successful, followed by independent
+  process-level verification of mixed enabled/disabled memories and recovery.
 - Independent verification reported PASS for `go vet ./...`,
   `go test ./... -count=1`, `go test -race ./... -count=1`,
   `python3 test/persistence_manual/test_multi_memory.py`, and
@@ -126,5 +126,8 @@ per-memory definitions. Ensure another MMA2 process does not already own port
   the last completed disk flush can be lost after an abrupt termination.
 - A bad primary is detected with CRC32 and restored from a valid backup. The
   backup runs on a 60-second interval; recovery can roll state back.
-- Per-memory directories must be distinct; sharing a directory between
-  processes is not a supported locking model.
+- The current implementation requires a nonempty `directory` for each
+  enabled memory, and validates distinct directories across enabled memories.
+  Omitting `directory` is **not** yet supported; the proposed default of
+  storing beside the YAML file is not part of this verified release.
+  Sharing a directory between processes is not a supported locking model.
