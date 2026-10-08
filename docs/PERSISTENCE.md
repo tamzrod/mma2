@@ -86,12 +86,43 @@ Only changes committed to the matching memory may dirty its snapshot. Disabled
 memories never create snapshot files. Persistence must not depend on RBE or
 State Sealing, and disk IO must not block Modbus writes.
 
-## Implementation migration gate
+## Manual Modbus Poll test
 
-The current feature branch still declares global persistence config in
-`internal/config/config.go`, `internal/config/persistence.go` and related
-runtime wiring. This document **supersedes** the old global contract. Migrate
-the schema, validation, plan resolution, runtime storage ownership, example,
-manual test configuration and tests before any merge. Run unit, race, process
-restart and backup recovery tests for independently enabled/disabled memories.
-No claim of implementation compliance is made by this documentation update.
+Use `test/persistence_manual/config.yaml` and run from the repository root:
+
+```bash
+bash test/persistence_manual/run.sh
+```
+
+The manual listener binds to `:15030` and exposes Unit ID 1. Connect Windows
+Modbus Poll to the Linux host's actual IP address and TCP port 15030; select
+FC3 (holding registers) and write a test value with FC6. Stop MMA2 using Ctrl+C,
+then start the script again and read back the same register. The value should
+survive a graceful restart. The sample permits any IPv4 client
+(`0.0.0.0/0`) **for lab testing only**; restrict `source_ip` for deployment.
+
+Snapshots remain in `test/persistence_manual/snapshots/` across runs of
+`run.sh`. **Do not run `test.py` against snapshots you want to retain:**
+it resets this test-owned directory at the beginning. The Python test checks
+startup, register/coil writes, primary restore and deliberately corrupted
+primary fallback to backup.
+
+The startup log for an enabled memory should contain
+`persistence ready: port=15030 unit=1 directory=...`.
+`persistence disabled (no enabled memories)` indicates there are no enabled
+per-memory definitions. Ensure another MMA2 process does not already own port
+15030 before manual testing.
+
+## Verification and limitations
+
+- The operator reports that per-memory persistence now works in manual testing.
+- Previously executed full-suite/race tests applied to the former global
+  implementation. Re-run `go test ./... -count=1`,
+  `go test -race ./... -count=1`, and the current manual process test after
+  migration before approving a merge.
+- Persistence makes no per-write power-loss durability guarantee. Updates since
+  the last completed disk flush can be lost after an abrupt termination.
+- A bad primary is detected with CRC32 and restored from a valid backup. The
+  backup runs on a 60-second interval; recovery can roll state back.
+- Per-memory directories must be distinct; sharing a directory between
+  processes is not a supported locking model.
