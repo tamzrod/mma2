@@ -12,7 +12,7 @@ type Config struct {
 	Notify         *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
 	RBE            *RBEOutputConfig                 `yaml:"rbe"`
 	AccessEvents   *accessevents.AccessEventsConfig `yaml:"access_events"`
-	Persistence    *PersistenceConfig               `yaml:"persistence"`
+	Persistence    *PersistenceConfig               `yaml:"persistence"` // legacy root block: explicitly rejected
 	Debug          bool                             `yaml:"debug"`
 }
 
@@ -74,6 +74,7 @@ type MemoryDefinition struct {
 	Notify         *NotifyConfig         `yaml:"notify"` // legacy
 	RBE            *RBERulesConfig       `yaml:"rbe"`
 	StateSealing   *StateSealingConfig   `yaml:"state_sealing"`
+	Persistence    *MemoryPersistenceConfig `yaml:"persistence"`
 	Policy         *MemoryPolicyConfig   `yaml:"policy"`
 }
 
