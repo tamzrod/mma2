@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"mma2/internal/config"
@@ -53,6 +55,9 @@ func (m *Manager) RestoreMemory(id memorycore.MemoryID, mem *memorycore.Memory) 
 		return nil
 	}
 
+	if err := migrateLegacySnapshots(m.Directory(), id); err != nil {
+		return m.fail(id, err)
+	}
 	store := NewFileStore(config.SnapshotPath(m.Directory(), id))
 	store.SetLayout(layout)
 
@@ -217,4 +222,36 @@ func sameLayout(parsed, expected *Layout) bool {
 		}
 	}
 	return true
+}
+
+
+// migrateLegacySnapshots preserves existing deployments when switching from
+// mma2-port-unit files to port-unit files. Each component is renamed within
+// the same directory, and an interrupted migration can be resumed on restart.
+func migrateLegacySnapshots(dir string, id memorycore.MemoryID) error {
+	legacy := filepath.Join(dir, fmt.Sprintf("mma2-%d-%d.bin", id.Port, id.UnitID))
+	current := config.SnapshotPath(dir, id)
+	for _, pair := range [][2]string{
+		{BackupPath(legacy), BackupPath(current)},
+		{legacy, current},
+	} {
+		_, err := os.Stat(pair[1])
+		if err == nil {
+			continue
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("stat current snapshot %s: %w", pair[1], err)
+		}
+		_, err = os.Stat(pair[0])
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("stat legacy snapshot %s: %w", pair[0], err)
+		}
+		if err := os.Rename(pair[0], pair[1]); err != nil {
+			return fmt.Errorf("migrate legacy snapshot %s: %w", pair[0], err)
+		}
+	}
+	return nil
 }
