@@ -17,7 +17,10 @@ Mode: CODE one bounded task at a time, then independent VERIFY.
 - Persistence lifecycle state is internal: DISABLED, RESTORING, READY, FAILED; separate from State Sealing and any ordinary memory address.
 - Preferred snapshot is fixed-layout binary `.bin` with address-to-file offsets, enabling word-level (`WriteAt` 2 bytes) and bit-byte-level (read-modify-write containing byte) updates without a whole-file rewrite.
 - Initial snapshot creation and layout changes may use temporary-file atomic replacement. Runtime changes should use targeted offsets; the exact crash-consistency mechanism must be planned explicitly. Do not claim in-place writes have whole-snapshot atomicity.
-- Header/layout integrity may be protected separately; do not impose a full-payload checksum that forces rewriting or rehashing an entire snapshot on every word update. Evaluate minimal journal/redo log or generation/checkpoint scheme if power-loss consistency is required.
+- Use CRC32 per fixed-size data block (initial candidate 256 bytes) so targeted changes only require their affected block checksum. Exact layout is finalized during P04.
+- Maintain a known-good backup image `snapshot.bak` separately from the current `snapshot.bin`. Never refresh the backup from a primary that has not passed integrity validation; never destroy the only valid recovery copy.
+- At startup validate primary first; if invalid, validate backup; if backup valid, restore and report recovery. If neither valid, enter FAILED without making partial/corrupt data externally available.
+- Define backup rotation/checkpoint rules so in-place writes never erase the only recoverable state. CRC32 identifies mismatches but does not itself guarantee atomicity of data+CRC writes.
 - Disk errors are observable. No guarantee of last-write durability between flushes is implied; precisely document the flush/durability contract.
 - Preserve existing core/protocol separation and avoid synchronous disk IO on memory-write hot paths.
 
@@ -36,7 +39,7 @@ Mode: CODE one bounded task at a time, then independent VERIFY.
 2. Enumerate all memory commit paths, including observed writes and future internal mutation entrypoints.
 3. Design one canonical committed-write hook or shared internal primitive without coupling memorycore to persistence or RBE. Confirm ordering/locking and how to prevent dropped dirty notifications.
 4. Define snapshot path ownership and multi-instance collision policy; define exact config placement and multiple custom range syntax according to actual repository conventions.
-5. Choose binary fixed-offset layout and word-level update contract. Specify header/identity/layout metadata, alignment, bit packing, update granularity, checksum tradeoffs, flush/sync policy and crash consistency (e.g. journal if required); reserve atomic rename for snapshot initialization/rebuild, not every word update.
+5. Choose binary fixed-offset layout and word-level update contract. Specify header/identity/layout metadata, alignment, bit packing, update granularity, CRC32 block granularity, flush/sync, backup generation and recovery/rotation rules. Verify that no write can corrupt both primary and only good backup; reserve atomic rename for snapshot initialization/rebuild, not every word update.
 6. Record HARD assumptions with source path, exact function/type and evidence before CODE.
 
 ## Ordered micro-task chain
@@ -56,11 +59,11 @@ Gate: no Modbus coil, State Sealing, RBE rule, or new control plane required.
 
 ### P04 — Snapshot format and codec
 Scope: fixed-layout `.bin` with deterministic offsets by selected memory identity, area, start and count; header version/layout validation, bit packing and register big-endian encoding. Support direct 2-byte word offsets and containing-byte bit offsets. Checksum coverage must not force a whole-file rewrite per update.
-Gate: deterministic roundtrip and offset calculations; identity, version, length and range mismatch reject; metadata integrity validated.
+Gate: deterministic roundtrip and offset calculations; per-block CRC32 detects corruption; identity, version, length and range mismatch reject; metadata integrity validated.
 
 ### P05 — Binary disk store and targeted writes
 Scope: initial atomic `.bin` creation/rebuild via temp file and rename; runtime positional writes to selected 2-byte register or containing bit byte; preserve adjacent words/bits; serialized file access and explicit sync policy.
-Gate: changing one register does not rewrite unaffected payload; adjacent bits survive targeted updates; failures are reported. Document that ordinary in-place writes alone are not power-loss atomic.
+Gate: changing one register does not rewrite unaffected payload; adjacent bits survive targeted updates; failures are reported. Keep a separately validated known-good backup before primary in-place mutations; document that ordinary in-place writes alone are not power-loss atomic.
 
 ### P06 — Startup restore orchestration
 Scope: after memory allocation, before listener acceptance; no TCP loopback.
@@ -76,7 +79,7 @@ Gate: successful writes eventually reach their correct offsets without rewriting
 
 ### P09 — Runtime failure handling
 Scope: transition to FAILED, diagnostics and retry/recovery policy, with no false success claims.
-Gate: disk-full/permission/partial positional write/sync failure is observable; startup handles truncated/torn data according to the expressly chosen crash-consistency contract (no unsupported atomicity claims).
+Gate: disk-full/permission/partial positional write/sync failure is observable; corrupt primary restores from verified backup and reports degraded recovery; both invalid yield FAILED (no unsupported atomicity claims).
 
 ### P10 — Independent transport coverage
 Scope: FC5, FC6, FC15, FC16, Raw Ingest, internal writes, including discrete inputs and input registers.
@@ -88,7 +91,7 @@ Gate: State Sealing stays untouched; snapshots cannot cross identities; no RBE t
 
 ### P12 — Integration, regression and documentation
 Scope: end-to-end restart tests, missing/corrupt/incompatible cases, change of ranges/layout, ordinary shutdown, docs/examples.
-Gate: start → write → confirm targeted bytes on disk → stop → restart → read same values works without external assistance; unchanged words and neighboring bits are preserved; old behavior preserved when disabled.
+Gate: start → write → confirm targeted bytes on disk → stop → restart → read same values works without external assistance; corrupt primary falls back to valid backup; corrupt both fail closed; unchanged words and neighboring bits are preserved; old behavior preserved when disabled.
 
 ### P13 — Independent VERIFY gate
 Scope: separate review of all prior commits against locked contract, go test/race where practical, reproducible evidence; no implementation under this gate.
