@@ -130,6 +130,17 @@ See [docs/RAW_INGEST.md](docs/RAW_INGEST.md) for the full response code table an
 
 ---
 
+## Native Persistence
+
+MMA2 can persist its authoritative raw memory to disk so values survive a
+restart. Persistence is optional and disabled by default; when enabled it
+restores validated snapshots before any listener accepts connections and applies
+every committed write to a fixed-offset binary snapshot. See
+[docs/PERSISTENCE.md](docs/PERSISTENCE.md) for configuration, on-disk format,
+durability contract, and behavior.
+
+---
+
 ## Modbus Device Identification
 
 FC43 / MEI 14 (`0x2B / 0x0E`) exposes the Basic ASCII objects VendorName,

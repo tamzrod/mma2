@@ -5,6 +5,44 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P12 — Integration, regression and documentation
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `docs/PERSISTENCE.md` (new): configuration, identity/files, on-disk format,
+  startup behavior, runtime behavior, durability contract, lifecycle states.
+- `README.md`: short "Native Persistence" section linking the doc.
+- `docs/example.yaml`: canonical commented `persistence` block (from P01).
+- `internal/persistence/integration_test.go` (new): 4 tests.
+
+### Decisions recorded (with evidence)
+
+1. **End-to-end restart**: start → write (register + bit) → orderly shutdown
+   flush → restart → read back the same values, with neighboring words/bits
+   preserved (`TestIntegrationRestartRoundtrip`).
+2. **Corrupt primary → valid backup**: recovery path restores from backup and
+   reports `RestoreSource="backup"` (`TestIntegrationCorruptPrimaryRecoversFromBackup`).
+3. **Layout/range change**: an existing snapshot whose layout no longer matches
+   configuration fails closed (`TestIntegrationLayoutChangeFailsClosed`).
+4. **Disabled preserves old behavior**: no manager activity, no files/dirs, no
+   protocol effect (`TestIntegrationDisabledPreservesOldBehavior`).
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- Process E2E (P08 evidence) covered the real binary over Modbus FC6/FC3.
+
+### Handoff
+
+READY: P13 — Independent VERIFY gate. Separately review all prior commits against
+the locked contract; run `go test`/`-race`/`go vet`; record PASS/FAIL and any
+findings. No implementation under this gate.
+
+---
+
 ## P11 — Independence and isolation
 
 Status: DONE
