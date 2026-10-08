@@ -64,18 +64,18 @@ type MemoryConfig struct {
 }
 
 type MemoryDefinition struct {
-	FC43           *DeviceIdentityConfig `yaml:"fc43"`
-	Port           uint16                `yaml:"port"`
-	UnitID         uint16                `yaml:"unit_id"`
-	Coils          Area                  `yaml:"coils"`
-	DiscreteInputs Area                  `yaml:"discrete_inputs"`
-	HoldingRegs    Area                  `yaml:"holding_registers"`
-	InputRegs      Area                  `yaml:"input_registers"`
-	Notify         *NotifyConfig         `yaml:"notify"` // legacy
-	RBE            *RBERulesConfig       `yaml:"rbe"`
-	StateSealing   *StateSealingConfig   `yaml:"state_sealing"`
+	FC43           *DeviceIdentityConfig    `yaml:"fc43"`
+	Port           uint16                   `yaml:"port"`
+	UnitID         uint16                   `yaml:"unit_id"`
+	Coils          Area                     `yaml:"coils"`
+	DiscreteInputs Area                     `yaml:"discrete_inputs"`
+	HoldingRegs    Area                     `yaml:"holding_registers"`
+	InputRegs      Area                     `yaml:"input_registers"`
+	Notify         *NotifyConfig            `yaml:"notify"` // legacy
+	RBE            *RBERulesConfig          `yaml:"rbe"`
+	StateSealing   *StateSealingConfig      `yaml:"state_sealing"`
 	Persistence    *MemoryPersistenceConfig `yaml:"persistence"`
-	Policy         *MemoryPolicyConfig   `yaml:"policy"`
+	Policy         *MemoryPolicyConfig      `yaml:"policy"`
 }
 
 type Area struct {

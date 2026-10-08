@@ -27,14 +27,14 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 type Listener struct {
 	cfg config.IngressGate
 
-	mu     sync.Mutex
-	ln     net.Listener
-	closed bool
-	active map[net.Conn]struct{}
-	wg sync.WaitGroup
+	mu        sync.Mutex
+	ln        net.Listener
+	closed    bool
+	active    map[net.Conn]struct{}
+	wg        sync.WaitGroup
 	closeOnce sync.Once
 	closeDone chan struct{}
-	closeErr error
+	closeErr  error
 }
 
 // NewListener creates a new ingress listener.
