@@ -171,23 +171,57 @@ func allocatedAreas(cfg *Config, id memIdentity) (map[memorycore.Area]Area, bool
 			if def.UnitID != id.unit {
 				continue
 			}
-			out := make(map[memorycore.Area]Area)
-			if def.Coils.Count > 0 {
-				out[memorycore.AreaCoils] = def.Coils
-			}
-			if def.DiscreteInputs.Count > 0 {
-				out[memorycore.AreaDiscreteInputs] = def.DiscreteInputs
-			}
-			if def.HoldingRegs.Count > 0 {
-				out[memorycore.AreaHoldingRegs] = def.HoldingRegs
-			}
-			if def.InputRegs.Count > 0 {
-				out[memorycore.AreaInputRegs] = def.InputRegs
-			}
-			return out, true
+			return areaAllocations(def), true
 		}
 	}
 	return nil, false
+}
+
+// areaAllocations maps a memory definition's non-empty areas to their config Area.
+func areaAllocations(def MemoryDefinition) map[memorycore.Area]Area {
+	out := make(map[memorycore.Area]Area)
+	if def.Coils.Count > 0 {
+		out[memorycore.AreaCoils] = def.Coils
+	}
+	if def.DiscreteInputs.Count > 0 {
+		out[memorycore.AreaDiscreteInputs] = def.DiscreteInputs
+	}
+	if def.HoldingRegs.Count > 0 {
+		out[memorycore.AreaHoldingRegs] = def.HoldingRegs
+	}
+	if def.InputRegs.Count > 0 {
+		out[memorycore.AreaInputRegs] = def.InputRegs
+	}
+	return out
+}
+
+// MemoryAllocation is the set of allocated areas for one memory identity.
+// Only areas with Count > 0 are present.
+type MemoryAllocation struct {
+	Areas map[memorycore.Area]Area
+}
+
+// BuildMemoryAllocations enumerates the allocated areas of every configured
+// memory identity, derived from listener (Port) and memory UnitID.
+func BuildMemoryAllocations(cfg *Config) map[memorycore.MemoryID]MemoryAllocation {
+	out := make(map[memorycore.MemoryID]MemoryAllocation)
+	if cfg == nil {
+		return out
+	}
+	for _, listener := range cfg.Ingress {
+		if len(listener.Memory) == 0 {
+			continue
+		}
+		port, err := parseListenPort(listener.Listen)
+		if err != nil {
+			continue
+		}
+		for _, def := range listener.Memory {
+			id := memorycore.MemoryID{Port: port, UnitID: def.UnitID}
+			out[id] = MemoryAllocation{Areas: areaAllocations(def)}
+		}
+	}
+	return out
 }
 
 // BuildPersistencePlan validates and resolves the persistence configuration

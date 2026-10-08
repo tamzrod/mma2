@@ -5,6 +5,58 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P02 — Persisted-range resolver
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/resolver.go` (new package): `Segment`, `ResolveSegments`,
+  `fullAreaSegments`, `explicitSegments`, `sortAndCheckSegments`, `orderedAreas`.
+- `internal/persistence/resolver_test.go` (new): 9 tests.
+- `internal/config/persistence.go`: added `MemoryAllocation` and
+  `BuildMemoryAllocations`; factored `areaAllocations` (shared by validation
+  and the resolver) so allocations are enumerated once from config evidence.
+
+### Decisions recorded (with evidence)
+
+1. **New package `internal/persistence`** rather than adding to `internal/config`:
+   the resolver is the seed of the persistence owner described in P03. It depends
+   on `config` (types) and `memorycore` (`Area`, `MemoryID`); it does not touch
+   `memorycore` behavior, preserving core/protocol separation.
+2. **Omitted ranges cover all allocated areas**: with no explicit ranges, the
+   resolver emits the full allocation of every configured identity via
+   `BuildMemoryAllocations`, ordered by the fixed area order
+   (coils, discrete_inputs, holding_registers, input_registers).
+3. **Explicit subsets**: emitted exactly as validated, unselected areas absent
+   (unselected data still initializes normally in memorycore). Unallocated
+   selections, out-of-allocation selections, zero counts, empty entries, and
+   unknown identities all reject cleanly (defense in depth over P01 validation).
+4. **Deterministic ordering**: partial insertion sort by area rank then ascending
+   start; verified by `TestResolveSegmentsDeterministicOrdering`.
+5. **Overlap rejection**: two segments in the same area that overlap are
+   rejected (`sortAndCheckSegments`). P01 already rejects duplicate identity
+   entries, so overlap is only reachable through future callers/tests.
+
+### HARD assumptions
+
+- Segment units match the area: bits for bit-areas, registers for register-areas
+  (`memorycore.AreaLayout.Size` semantics). P04 must encode accordingly.
+
+### Evidence
+
+- `go vet ./internal/persistence/ ./internal/config/` — clean.
+- `go test ./internal/persistence/ ./internal/config/ -count=1` — pass.
+
+### Handoff
+
+READY: P03 — Internal lifecycle and diagnostics model. Build the persistence
+owner with DISABLED/RESTORING/READY/FAILED and last error/save/restore, wired to
+the resolver output. No Modbus coil, State Sealing, RBE rule, or control plane.
+
+---
+
 ## P01 — Schema and validation
 
 Status: DONE
