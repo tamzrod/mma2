@@ -15,12 +15,12 @@
 - C02 — IMPLEMENTED: Validate local storage directory and explicit areas/ranges against the owning memory; support direct range lists; prohibit shared/colliding storage targets.
 - C03 — IMPLEMENTED: Resolve per-memory persistence plan using listener-derived `(Port, UnitID)`; disabled memories excluded; no global enable/ranges/directory.
 - C04 — IMPLEMENTED: Wire runtime startup restore, memory observers and 60-second backup schedule only for enabled memories, each with local storage path.
-- C05 — PARTIAL: Canonical/manual YAML updated; previous manual process test covers restart and backup fallback for one enabled memory. Mixed enabled/disabled multi-port process-level regression remains to verify.
-- C06 — PENDING: Run Go tests, race detector, current manual process test and independent architecture VERIFY; record SHAs and evidence. Operator reports successful hands-on persistence test, not a replacement for full VERIFY. Do not merge until all PASS.
+- C05 — DONE: Canonical/manual YAML updated; `test/persistence_manual/test_multi_memory.py` covers a real-binary mixed enabled/disabled multi-memory run (units 1 and 2 enabled with own directories, unit 3 disabled), restart restore, corrupt-primary fallback, and cross-memory isolation. PASS.
+- C06 — PASS: `go vet ./...` clean; `go test ./... -count=1` and `go test -race ./... -count=1` green; `test_multi_memory.py` real-binary PASS; `test/rbe_e2e/run_test.sh` PASS; independent architecture review against the per-memory contract found no unresolved HARD assumptions. No merge performed (already merged via PR #22).
 
 
-Status: HISTORICAL P01–P13 PLAN; per-memory migration implementation committed, final VERIFY pending
-Branch: feature/native-persistence
+Status: PER-MEMORY MIGRATION COMPLETE; C01–C06 PASS
+Branch: merged to `main` via PR #22 (head `55366d6`); this VERIFY ran at `main` 4761fd7
 Base: main
 Mode: CODE one bounded task at a time, then independent VERIFY.
 

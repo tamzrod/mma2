@@ -116,11 +116,12 @@ per-memory definitions. Ensure another MMA2 process does not already own port
 ## Verification and limitations
 
 - The operator reports that per-memory persistence now works in manual testing.
-- Independent V01/V02 verification on `feature/native-persistence` reported
-  PASS for `go vet ./...`, `go test ./... -count=1`,
-  `go test -race ./... -count=1`, and
-  `python3 test/persistence_manual/test_multi_memory.py`. These results
-  concern the feature branch, not the current `main` runtime.
+- Independent verification reported PASS for `go vet ./...`,
+  `go test ./... -count=1`, `go test -race ./... -count=1`,
+  `python3 test/persistence_manual/test_multi_memory.py`, and
+  `bash test/rbe_e2e/run_test.sh`. The per-memory implementation is merged to
+  `main` (PR #22); the final VERIFY (C06) was run on `main` at `4761fd7` with
+  Go 1.25.0.
 - Persistence makes no per-write power-loss durability guarantee. Updates since
   the last completed disk flush can be lost after an abrupt termination.
 - A bad primary is detected with CRC32 and restored from a valid backup. The

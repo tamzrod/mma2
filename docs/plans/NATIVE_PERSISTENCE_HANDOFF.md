@@ -5,6 +5,75 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## C06 — Final VERIFY of the per-memory migration
+
+Status: PASS
+Verification point: `main` @ `4761fd7` (per-memory migration merged as PR #22,
+head `55366d6ea4421b4cb21fa8a19e5878fbf36896e1`)
+
+Independent review of the committed per-memory implementation against the
+locked contract, with a real-binary process regression. No feature work.
+
+### Contract checks
+
+- Root-level `persistence` is rejected, not silently ignored: `Config.Persistence`
+  is a `*PersistenceConfig` marker and `BuildPerMemoryPersistencePlans` errors on
+  any non-nil root block (`internal/config/persistence.go`,
+  `internal/config/persistence_per_memory.go`). PASS.
+- Disabled by default; `enabled: true` requires a local nonempty `directory`;
+  omitted ranges persist all allocated areas of the owning memory; explicit
+  ranges must be nonzero, non-overlapping, and inside allocation (no clamping).
+  PASS (`TestPerMemoryPersistence*`, resolver tests).
+- Identity `(Port, UnitID)` derived from the listener; distinct directories are
+  enforced; snapshot names are `mma2-<port>-<unit_id>.bin`/`.bak`. PASS.
+- Startup restores each enabled memory after allocation and before listeners
+  accept; missing snapshot creates initial primary+backup; invalid primary falls
+  back to a validated backup; invalid both fail closed with no partial
+  restore. PASS (`restore.go`, restore tests, integration tests).
+- Fixed-offset binary format (v2) with header/descriptor metadata CRC and
+  per-256-byte-block CRC32; targeted range writes refresh only touched blocks;
+  metadata CRC never covers the payload. PASS (`format.go`, store/format tests).
+- Known-good backup refreshed on the locked 60-second cadence from an
+  already-validated primary only; the scheduler starts the clock at restore and
+  a periodic ticker holds the cadence while idle. A failing flush never touches
+  the backup and re-marks the drained ranges. PASS
+  (`scheduler.go`, `failure_test.go`, `backup_interval_regression_test.go`).
+- All authoritative writers mark dirty via the neutral memorycore observer, with
+  RBE on or off; reads never mark dirty; protocol/ACK unchanged. PASS
+  (`observer.go`, `transport_coverage_test.go`).
+- State Sealing untouched; no external service required. PASS
+  (`isolation_test.go`).
+
+### Evidence
+
+- Toolchain: Go 1.25.0 linux/amd64.
+- `go build ./...` — clean.
+- `go vet ./...` — clean.
+- `go test ./... -count=1` — all packages ok (config, ingress, memorycore,
+  notify, persistence, rbe, transport/modbus, transport/rawingest, tools).
+- `go test -race ./... -count=1` — all packages ok.
+- `python3 test/persistence_manual/test_multi_memory.py` — PASS: real binary,
+  units 1 and 2 enabled in distinct directories, unit 3 disabled; write, restart,
+  read back (1→101, 2→102, 3→0); corrupt unit 1 primary → 0 while unit 2 stays
+  102; disabled unit 3 resets.
+- `bash test/rbe_e2e/run_test.sh` — PASS.
+
+### C05 coverage completed here
+
+The mixed enabled/disabled multi-memory process-level regression that C05 left
+open is exercised end-to-end by `test/persistence_manual/test_multi_memory.py`
+(separate listener port, isolated temp directories, never touches the manual
+snapshot directory).
+
+### Unresolved HARD assumptions
+
+None new. The two P13 items stand as recorded decisions: snapshot filename and
+256-byte block size are chosen conventions, and bit payload padding bits beyond
+`Count` are assumed zero (they are only ever written in-range and memory starts
+zeroed).
+
+---
+
 ## P13 — Independent VERIFY gate
 
 Status: PASS (after remediation)
