@@ -159,6 +159,20 @@ func coalesce(ranges []DirtyRange) []DirtyRange {
 	return out
 }
 
+// remarkDirty re-adds ranges after a failed flush so the unpersisted data stays
+// visible to diagnostics and a future recovery attempt.
+func (m *Manager) remarkDirty(id memorycore.MemoryID, ranges []DirtyRange) {
+	if m == nil || len(ranges) == 0 {
+		return
+	}
+	m.mu.Lock()
+	if m.dirty == nil {
+		m.dirty = make(map[memorycore.MemoryID][]DirtyRange)
+	}
+	m.dirty[id] = coalesce(append(m.dirty[id], ranges...))
+	m.mu.Unlock()
+}
+
 // DirtySnapshot returns and clears the current dirty ranges for an identity.
 // The generation counter increments on every marked write; a flush may use it
 // to detect writes that arrived during a snapshot/copy.

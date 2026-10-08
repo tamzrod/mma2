@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -123,33 +125,49 @@ func (s *Scheduler) run(ctx context.Context) {
 	}
 }
 
-// Close stops the loop and performs a final flush. Idempotent.
+// Close stops the loop and performs a final flush. Idempotent. A failed final
+// flush leaves the manager FAILED (recorded by flushIdentity); the backup is
+// never touched by a failing flush.
 func (s *Scheduler) Close() {
 	if s == nil || s.stop == nil {
 		return
 	}
+	s.mu.Lock()
 	select {
 	case <-s.stop:
+		s.mu.Unlock()
+		return
 	default:
 		close(s.stop)
 	}
+	s.mu.Unlock()
 	<-s.stopped
 }
 
-// flushAll drains and flushes every identity with pending dirty ranges.
+// flushAll drains and flushes every identity with pending dirty ranges. Once
+// the manager is FAILED it stops attempting flushes until an explicit recovery
+// path resets state; this avoids repeated failed writes and false success.
 func (s *Scheduler) flushAll() {
+	if s.mgr.Failed() {
+		return
+	}
 	for _, id := range s.mgr.PersistedIdentities() {
 		s.flushIdentity(id)
 	}
 }
 
-// flushIdentity drains and applies the dirty ranges for one identity, then
-// refreshes the backup if the checkpoint interval elapsed.
+// flushIdentity drains and applies the dirty ranges for one identity. On a
+// failure the manager becomes FAILED and the drained ranges are re-marked so
+// the lost data remains visible and is not silently forgotten. The known-good
+// backup is never modified here.
 func (s *Scheduler) flushIdentity(id memorycore.MemoryID) {
 	ranges, _ := s.mgr.DirtySnapshot(id)
 	if len(ranges) > 0 {
 		if err := s.applyRanges(id, ranges); err != nil {
-			s.mgr.markFailed(err, time.Now())
+			s.mgr.remarkDirty(id, ranges)
+			wrapped := fmt.Errorf("persistence: identity (port=%d unit=%d): flush failed: %w", id.Port, id.UnitID, err)
+			log.Printf("%v (persistence entering FAILED; unflushed data retained)", wrapped)
+			s.mgr.markFailed(wrapped, time.Now())
 			return
 		}
 		s.mgr.markSaved(time.Now())

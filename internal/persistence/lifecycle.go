@@ -158,6 +158,19 @@ func (m *Manager) State() State {
 	return m.state
 }
 
+// Failed reports whether the manager has transitioned to FAILED.
+func (m *Manager) Failed() bool { return m.State() == StateFailed }
+
+// LastError returns the recorded failure, if any.
+func (m *Manager) LastError() error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastErr
+}
+
 // Segments returns the resolved segments for an identity.
 func (m *Manager) Segments(id memorycore.MemoryID) ([]Segment, bool) {
 	if m == nil {

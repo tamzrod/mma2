@@ -5,6 +5,53 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P09 — Runtime failure handling
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/persistence/lifecycle.go`: `Failed()` and `LastError()` accessors.
+- `internal/persistence/scheduler.go`: `flushAll` stops once FAILED; a failed
+  `flushIdentity` re-marks the drained dirty ranges, records a wrapped error,
+  logs it, and transitions to FAILED; `Close` is a mutex-guarded idempotent stop.
+- `internal/persistence/observer.go`: `remarkDirty`.
+- `internal/persistence/failure_test.go` (new): 4 tests.
+
+### Decisions recorded (with evidence)
+
+1. **Observable failures**: disk-full/permission/partial-write/sync failures
+   surface through `Diagnostics.LastError`/`LastErrorAt`, `State()==FAILED`,
+   `Failed()`, and a startup log line. The scheduler stops attempting flushes
+   once FAILED (no repeated failed writes, no false success).
+2. **No plausible corrupt snapshot**: a failing flush only touches the primary
+   via positional writes; the known-good backup is never written by the flush
+   path or by a checkpoint whose primary failed validation.
+3. **Unflushed data retained**: on flush failure the drained ranges are
+   re-marked, so the lost data stays visible rather than silently dropped.
+4. **FAILED is sticky**: `markSaved`/`markRestored` do not clear FAILED; recovery
+   requires an explicit future path.
+5. **Recovery policy**: startup already restores from a valid backup and rebuilds
+   the primary (degraded recovery, P06); a runtime FAILED state keeps memory
+   serving reads/writes in volatile mode and is reported, not hidden.
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ -race -count=1` — pass.
+- Failure tests: unwritable primary → FAILED + recorded error + retained dirty +
+  unchanged backup; retries stop; corrupt primary never overwrites backup.
+
+### Handoff
+
+READY: P10 — Independent transport coverage. Verify FC5, FC6, FC15, FC16, Raw
+Ingest, and internal writes all mark persistence dirty (including discrete inputs
+and input registers), with RBE disabled and enabled, preserving existing protocol
+and ACK behavior.
+
+---
+
 ## P08 — Runtime dirty scheduler and flush
 
 Status: DONE
