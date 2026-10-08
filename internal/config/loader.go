@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
@@ -66,6 +67,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config yaml: %w", err)
 	}
 
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve config path: %w", err)
+	}
+	cfg.configDir = filepath.Dir(abs)
 	return &cfg, nil
 }
 
