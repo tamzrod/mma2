@@ -22,7 +22,7 @@ listeners:
         holding_registers: {start: 0, count: 256}
         persistence:
           enabled: true
-          directory: /var/lib/mma2/unit1
+          # directory omitted: snapshot files are stored beside config.yaml
           # ranges omitted = all allocated areas of THIS memory
         policy:
           rules:
@@ -43,7 +43,7 @@ listeners:
         holding_registers: {start: 0, count: 100}
         persistence:
           enabled: true
-          directory: /var/lib/mma2/other-unit1
+          directory: /var/lib/mma2/other-unit1  # optional override
           ranges:
             holding_registers:
               - start: 20
@@ -56,19 +56,19 @@ listeners:
 
 - The block is accepted **only** inside the memory entry that owns it.
 - Missing `persistence`, or `enabled: false`, means disabled **for that memory only**.
-- `enabled: true` requires a nonempty `directory` **in the same memory entry**. No global/default directory is inferred.
+- `enabled: true` works without `directory`: snapshots default to the folder containing the loaded YAML file. An explicit `directory` overrides the default.
 - Omitted `ranges` means every configured area **of that same memory only** (coils, discrete inputs, holding registers, input registers).
 - If `ranges` is present, only explicitly listed areas/ranges are persisted. Range arrays follow the direct existing multi-block style (no `segments:` wrapper). Ranges must be positive, nonoverlapping, contained in allocated memory, and never silently clamped or remapped.
 - Root-level `persistence` must fail validation as unsupported, rather than silently being ignored.
-- Duplicate storage targets across memories/process instances must fail validation where discoverable. Paths used for snapshots must be isolated to prevent collisions.
+- Multiple memories may use the same directory: snapshot filenames distinguish Port and UnitID.
 - One memory's disabled or failed persistence cannot silently alter another memory's persistence configuration. Before listener exposure, an invalid required snapshot still fails closed for startup.
 - Configured listener port plus UnitID determines memory identity; neither a directory nor YAML key affects routing.
 
 ## Identity, files, and disk behavior
 
 Identity remains `(Port:uint16, UnitID:uint16)`. Each enabled memory owns
-`mma2-<port>-<unit_id>.bin` and `mma2-<port>-<unit_id>.bak` in **its own**
-configured directory. There are no shared/global snapshot settings.
+`<port>-<unit_id>.bin` and `<port>-<unit_id>.bak` in **its own**
+configured directory. The default is the directory containing the loaded YAML file; multiple memories may share that directory. Existing legacy `mma2-<port>-<unit_id>` snapshot pairs are migrated on startup.
 
 The snapshot is fixed-offset binary: versioned metadata, 256-byte CRC32 payload
 blocks, LSB-first bits, big-endian registers, targeted writes and background
@@ -126,8 +126,7 @@ per-memory definitions. Ensure another MMA2 process does not already own port
   the last completed disk flush can be lost after an abrupt termination.
 - A bad primary is detected with CRC32 and restored from a valid backup. The
   backup runs on a 60-second interval; recovery can roll state back.
-- The current implementation requires a nonempty `directory` for each
-  enabled memory, and validates distinct directories across enabled memories.
-  Omitting `directory` is **not** yet supported; the proposed default of
-  storing beside the YAML file is not part of this verified release.
-  Sharing a directory between processes is not a supported locking model.
+- The snapshot directory defaults to the YAML configuration folder when omitted.
+  Explicit directories are optional; storage requires filesystem write access.
+  New filenames use `<port>-<unit_id>.bin` and `.bak` with startup migration
+  from the previous `mma2-` prefix.
