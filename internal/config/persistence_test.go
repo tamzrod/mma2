@@ -2,6 +2,7 @@ package config
 
 import (
 	"strings"
+	"path/filepath"
 	"testing"
 
 	"mma2/internal/memorycore"
@@ -153,4 +154,33 @@ func TestSnapshotFileNamesAreDeterministicAndDistinct(t *testing.T) {
 	if a != b || a == c || a != "502-1.bin" {
 		t.Fatalf("snapshot identity collision: %q %q %q", a, b, c)
 	}
+}
+
+func TestLoadedYAMLDefaultsPersistenceToConfigFolder(t *testing.T) {
+    raw := []byte(`listeners:
+  - id: test
+    listen: ":15030"
+    memory:
+      - unit_id: 1
+        holding_registers: {start: 0, count: 10}
+        persistence:
+          enabled: true
+      - unit_id: 2
+        holding_registers: {start: 0, count: 10}
+        persistence:
+          enabled: true
+`)
+    filename := writeTemp(t, raw)
+    cfg, err := Load(filename)
+    if err != nil { t.Fatal(err) }
+    if err := Validate(cfg); err != nil { t.Fatal(err) }
+    plans, err := BuildPerMemoryPersistencePlans(cfg)
+    if err != nil { t.Fatal(err) }
+    folder := filepath.Dir(filename)
+    for _, unit := range []uint16{1, 2} {
+        id := memorycore.MemoryID{Port: 15030, UnitID: unit}
+        if plans[id] == nil || plans[id].Directory != folder {
+            t.Fatalf("unit %d directory = %+v, want %q", unit, plans[id], folder)
+        }
+    }
 }
