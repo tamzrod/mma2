@@ -49,6 +49,7 @@ func BuildPerMemoryPersistencePlans(cfg *Config) (map[memorycore.MemoryID]*Resol
     result:=make(map[memorycore.MemoryID]*ResolvedPersistence)
     directories:=make(map[string]memorycore.MemoryID)
     for li,l := range cfg.Ingress {
+        if len(l.Memory)==0 {continue}
         port,err:=parseListenPort(l.Listen)
         if err != nil { return nil,fmt.Errorf("listeners[%d]: %w",li,err) }
         for mi,mem := range l.Memory {
