@@ -1,8 +1,8 @@
 package config
 
 import (
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"mma2/internal/memorycore"
@@ -64,9 +64,13 @@ func TestPerMemoryPersistenceDefaultsToYAMLDirectory(t *testing.T) {
 	cfg.Ingress[0].Memory[0].Persistence.Directory = ""
 	cfg.configDir = t.TempDir()
 	plans, err := BuildPerMemoryPersistencePlans(cfg)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	id := memorycore.MemoryID{Port: 15030, UnitID: 1}
-	if plans[id].Directory != cfg.configDir { t.Fatalf("default directory = %q; want %q", plans[id].Directory, cfg.configDir) }
+	if plans[id].Directory != cfg.configDir {
+		t.Fatalf("default directory = %q; want %q", plans[id].Directory, cfg.configDir)
+	}
 }
 
 func TestPerMemoryPersistenceConfiguredRanges(t *testing.T) {
@@ -109,8 +113,12 @@ func TestPerMemoryPersistenceAllowsSharedDirectory(t *testing.T) {
 	cfg := persistenceConfig()
 	cfg.Ingress[0].Memory[1].Persistence = &MemoryPersistenceConfig{Enabled: true, Directory: "test/snapshots/unit1"}
 	plans, err := BuildPerMemoryPersistencePlans(cfg)
-	if err != nil { t.Fatal(err) }
-	if len(plans) != 2 { t.Fatalf("expected two plans, got %d", len(plans)) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 2 {
+		t.Fatalf("expected two plans, got %d", len(plans))
+	}
 }
 
 func TestPerMemoryPersistenceYAMLParsing(t *testing.T) {
@@ -157,7 +165,7 @@ func TestSnapshotFileNamesAreDeterministicAndDistinct(t *testing.T) {
 }
 
 func TestLoadedYAMLDefaultsPersistenceToConfigFolder(t *testing.T) {
-    raw := []byte(`listeners:
+	raw := []byte(`listeners:
   - id: test
     listen: ":15030"
     memory:
@@ -170,17 +178,23 @@ func TestLoadedYAMLDefaultsPersistenceToConfigFolder(t *testing.T) {
         persistence:
           enabled: true
 `)
-    filename := writeTemp(t, raw)
-    cfg, err := Load(filename)
-    if err != nil { t.Fatal(err) }
-    if err := Validate(cfg); err != nil { t.Fatal(err) }
-    plans, err := BuildPerMemoryPersistencePlans(cfg)
-    if err != nil { t.Fatal(err) }
-    folder := filepath.Dir(filename)
-    for _, unit := range []uint16{1, 2} {
-        id := memorycore.MemoryID{Port: 15030, UnitID: unit}
-        if plans[id] == nil || plans[id].Directory != folder {
-            t.Fatalf("unit %d directory = %+v, want %q", unit, plans[id], folder)
-        }
-    }
+	filename := writeTemp(t, raw)
+	cfg, err := Load(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatal(err)
+	}
+	plans, err := BuildPerMemoryPersistencePlans(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Dir(filename)
+	for _, unit := range []uint16{1, 2} {
+		id := memorycore.MemoryID{Port: 15030, UnitID: unit}
+		if plans[id] == nil || plans[id].Directory != folder {
+			t.Fatalf("unit %d directory = %+v, want %q", unit, plans[id], folder)
+		}
+	}
 }
