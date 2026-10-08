@@ -5,6 +5,7 @@ import "mma2/internal/accessevents"
 
 // Config is the root configuration for MMA2.
 type Config struct {
+	configDir string // absolute directory of the loaded YAML; not a YAML field
 	// DeviceIdentity is retained only to reject the removed global configuration.
 	DeviceIdentity *DeviceIdentityConfig            `yaml:"device_identity"`
 	Ingress        []IngressGate                    `yaml:"listeners"`
