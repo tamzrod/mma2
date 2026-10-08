@@ -63,12 +63,17 @@ type Manager struct {
 	state    State
 	dir      string
 	segments map[memorycore.MemoryID][]Segment
+	layouts  map[memorycore.MemoryID]*Layout
 
 	lastErr     error
 	lastErrAt   time.Time
 	lastRestore time.Time
 	lastSave    time.Time
 	restoreSrc  string
+
+	// dirty holds coalesced file byte ranges per identity awaiting flush.
+	dirty    map[memorycore.MemoryID][]DirtyRange
+	dirtyGen map[memorycore.MemoryID]uint64
 }
 
 // New constructs the persistence owner from a validated plan. A nil plan yields
@@ -89,7 +94,31 @@ func New(plan *config.ResolvedPersistence, allocations map[memorycore.MemoryID]c
 	m.state = StateRestoring
 	m.dir = plan.Directory
 	m.segments = segments
+	m.layouts = make(map[memorycore.MemoryID]*Layout, len(segments))
+	for id, segs := range segments {
+		if len(segs) == 0 {
+			continue
+		}
+		layout, err := NewLayout(id, segs)
+		if err != nil {
+			return nil, err
+		}
+		m.layouts[id] = layout
+	}
+	m.dirty = make(map[memorycore.MemoryID][]DirtyRange)
+	m.dirtyGen = make(map[memorycore.MemoryID]uint64)
 	return m, nil
+}
+
+// LayoutFor returns the cached fixed layout for an identity, if persisted.
+func (m *Manager) LayoutFor(id memorycore.MemoryID) (*Layout, bool) {
+	if m == nil {
+		return nil, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.layouts[id]
+	return l, ok
 }
 
 // Enabled reports whether persistence is active (not DISABLED).

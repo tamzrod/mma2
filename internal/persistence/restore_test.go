@@ -24,8 +24,10 @@ func restorePlan(dir string) *config.ResolvedPersistence {
 func newMemory(t *testing.T) *memorycore.Memory {
 	t.Helper()
 	mem, err := memorycore.NewMemory(memorycore.MemoryLayouts{
-		Coils:       &memorycore.AreaLayout{Start: 0, Size: 16},
-		HoldingRegs: &memorycore.AreaLayout{Start: 0, Size: 8},
+		Coils:          &memorycore.AreaLayout{Start: 0, Size: 16},
+		DiscreteInputs: &memorycore.AreaLayout{Start: 0, Size: 16},
+		HoldingRegs:    &memorycore.AreaLayout{Start: 0, Size: 8},
+		InputRegs:      &memorycore.AreaLayout{Start: 0, Size: 8},
 	})
 	if err != nil {
 		t.Fatal(err)

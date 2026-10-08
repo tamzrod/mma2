@@ -5,6 +5,75 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P07 — Unify committed mutation observation
+
+Status: DONE
+Branch: feature/native-persistence
+
+### What changed
+
+- `internal/memorycore/observer.go` (new): neutral `CommittedWriteObserver`
+  interface and `Memory.SetCommittedWriteObserver`; `notifyCommitted` called
+  under the memory lock.
+- `internal/memorycore/memory.go`, `observed_write.go`: `WriteBits`,
+  `WriteRegs`, `WriteBitsObserved`, `WriteRegsObserved` each notify the observer
+  once per successful commit, immediately after mutation and before the lock is
+  released. Failed writes (out of bounds, bad length, invalid area, bad probe)
+  return before the notification.
+- `internal/memorycore/observer_test.go` (new): 5 tests.
+- `internal/persistence/observer.go` (new): `memoryObserver`,
+  `Manager.AttachMemory`, `MarkCommitted`, exact byte-range computation
+  (`committedDirtyRanges`, `byteSpanWithinSegment`), `coalesce`,
+  `DirtySnapshot`/`DirtyRanges`, per-identity generation counter.
+- `internal/persistence/lifecycle.go`: cache `layouts` at construction;
+  `LayoutFor`; `dirty`/`dirtyGen` maps.
+- `internal/persistence/observer_test.go` (new): 8 tests.
+- `cmd/mma2/main.go`: `AttachMemory` for each persisted identity after restore.
+
+### Decisions recorded (with evidence)
+
+1. **One canonical hook, in memorycore, behavior-free**: the observer callback
+   carries only `(area, address, count)`. memorycore knows nothing about
+   persistence/RBE; it performs no IO and holds no dependency upward. This is a
+   neutral primitive, not a persistence feature.
+2. **Exactly one notification per successful commit; none on failure**: every
+   commit path notifies after the mutation under the same lock; every failure
+   path returns before notifying. This is independent of RBE/observer presence
+   and covers `DiscreteInputs` and `InputRegs` too.
+3. **No disk IO on the write hot path**: `OnCommittedWrite` only computes byte
+   ranges and coalesces them under the manager mutex; the flush happens
+   off-path in P08.
+4. **Exact byte ranges, not whole segments**: bit writes mark the containing
+   byte span; register writes mark 2 bytes/register. Ranges are intersected with
+   persisted segments, so unpersisted areas never dirty persistence.
+5. **Ordering/no dropped notifications**: marking happens synchronously under
+   the memory write lock, so a committed write can never race past the mark;
+   `dirtyGen` lets P08 detect writes that arrive during a copy.
+6. **Cached layouts**: layout is computed once per identity at `New`, removing
+   per-write allocation on the hot path.
+
+### HARD assumptions
+
+- `notifyCommitted` runs while the memory write lock is held, so the observer
+  must be non-blocking and must not re-enter the same `Memory`. `MarkCommitted`
+  takes the manager mutex, never a memory lock, so lock ordering is
+  memory-lock → manager-mutex and cannot deadlock.
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ ./internal/memorycore/ -race -count=1` — pass.
+
+### Handoff
+
+READY: P08 — Runtime dirty scheduler and flush. Drain dirty ranges, apply
+targeted word/bit writes plus block CRC(s) via `FileStore.ApplyWord`/
+`ApplyBitByte`, coalesce, serialize the writer, and flush on orderly shutdown.
+Refresh the backup on a bounded checkpoint schedule. Document abrupt-crash
+guarantees.
+
+---
+
 ## Contract reconciliation — per-block CRC32 and known-good backup
 
 Status: DONE

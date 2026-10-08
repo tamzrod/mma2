@@ -18,15 +18,11 @@ func (m *Manager) Directory() string {
 	return m.dir
 }
 
-// layoutFor builds the fixed layout for an identity from its resolved segments.
+// layoutFor returns the cached fixed layout for an identity, if persisted.
 func (m *Manager) layoutFor(id memorycore.MemoryID) (*Layout, bool, error) {
-	segs, ok := m.Segments(id)
-	if !ok || len(segs) == 0 {
+	layout, ok := m.LayoutFor(id)
+	if !ok || layout == nil {
 		return nil, false, nil
-	}
-	layout, err := NewLayout(id, segs)
-	if err != nil {
-		return nil, false, err
 	}
 	return layout, true, nil
 }

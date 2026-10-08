@@ -89,6 +89,8 @@ func main() {
 			if err := persistMgr.RestoreMemory(mid, mem); err != nil {
 				log.Fatalf("persistence restore failed (failing closed): %v", err)
 			}
+			// Observe committed writes from every transport for this identity.
+			persistMgr.AttachMemory(mid, mem)
 		}
 		log.Printf("persistence ready: %d identities, directory %s", len(persistMgr.PersistedIdentities()), persistMgr.Directory())
 	} else {

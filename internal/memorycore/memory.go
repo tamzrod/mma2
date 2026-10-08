@@ -29,6 +29,9 @@ type Memory struct {
 
 	// ---- State Sealing metadata (no behavior here) ----
 	stateSealing *StateSealingDef
+
+	// observer is notified after each successful committed write.
+	observer CommittedWriteObserver
 }
 
 func NewMemory(layouts MemoryLayouts) (*Memory, error) {
@@ -151,6 +154,7 @@ func (m *Memory) WriteBits(area Area, address uint16, count uint16, src []byte) 
 
 	m.mu.Lock()
 	writeBits(backing, off, count, src[:want])
+	m.notifyCommitted(area, address, count)
 	m.mu.Unlock()
 
 	return nil
@@ -244,6 +248,7 @@ func (m *Memory) WriteRegs(area Area, address uint16, count uint16, src []byte) 
 		v := binary.BigEndian.Uint16(src[int(i)*2 : int(i)*2+2])
 		backing[int(off+i)] = v
 	}
+	m.notifyCommitted(area, address, count)
 	m.mu.Unlock()
 
 	return nil
