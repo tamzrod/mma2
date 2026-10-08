@@ -12,6 +12,7 @@ type Config struct {
 	Notify         *NotifyOutputConfig              `yaml:"notify"` // legacy until RBE cutover
 	RBE            *RBEOutputConfig                 `yaml:"rbe"`
 	AccessEvents   *accessevents.AccessEventsConfig `yaml:"access_events"`
+	Persistence    *PersistenceConfig               `yaml:"persistence"`
 	Debug          bool                             `yaml:"debug"`
 }
 

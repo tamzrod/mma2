@@ -14,6 +14,21 @@
 # Defaults to false when absent.
 # debug: true
 
+# Optional: native persistence. Disabled when absent. When enabled, state is
+# restored from disk snapshots before listeners accept connections, and every
+# authoritative write is snapshotted. `directory` is required when enabled and
+# holds one deterministic snapshot file per (port, unit_id). Omit `ranges` to
+# persist every configured area of every configured memory identity; provide
+# `ranges` to persist explicit subsets only (never clamped or remapped).
+# persistence:
+#   enabled: true
+#   directory: /var/lib/mma2
+#   ranges:
+#     - port: 502
+#       unit_id: 1
+#       holding_registers: {start: 0, count: 256}
+#       coils: {start: 0, count: 128}
+
 listeners:
   # ------------------------------------------------------------
   # Listener on standard Modbus TCP port 502

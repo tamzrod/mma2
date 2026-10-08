@@ -32,6 +32,11 @@ func Validate(cfg *Config) error {
 		return err
 	}
 
+	// Validate persistence configuration if present and enabled.
+	if err := ValidatePersistence(cfg); err != nil {
+		return err
+	}
+
 	// Validate access events configuration if present and enabled.
 	if err := validateAccessEvents(cfg); err != nil {
 		return err
