@@ -90,7 +90,8 @@ func (l *Listener) ListenAndServe(
 	}
 }
 
-// Close stops Accept and unbinds the port. It is idempotent.
+// Close stops Accept, closes active sockets, and waits for all handlers to exit.
+// The caller can safely perform a final persistence flush after it returns.
 func (l *Listener) Close() error {
 	if l == nil {
 		return nil
