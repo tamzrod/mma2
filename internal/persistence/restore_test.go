@@ -337,3 +337,45 @@ func TestRestoreCreatesDirectoryRelative(t *testing.T) {
 		t.Fatalf("restore: %v", err)
 	}
 }
+
+func TestRestoreMigratesLegacySnapshotNames(t *testing.T) {
+    m, dir := newRestoreManager(t)
+    id := memorycore.MemoryID{Port: 502, UnitID: 1}
+    original := newMemory(t)
+    if err := original.WriteRegs(memorycore.AreaHoldingRegs, 4, 1, []byte{0x12, 0x34}); err != nil {
+        t.Fatal(err)
+    }
+    if err := m.RestoreMemory(id, original); err != nil {
+        t.Fatal(err)
+    }
+
+    current := config.SnapshotPath(dir, id)
+    old := filepath.Join(dir, "mma2-502-1.bin")
+    if err := os.Rename(current, old); err != nil {
+        t.Fatal(err)
+    }
+    if err := os.Rename(BackupPath(current), BackupPath(old)); err != nil {
+        t.Fatal(err)
+    }
+
+    restored := newMemory(t)
+    next, err := New(restorePlan(dir), allocations())
+    if err != nil {
+        t.Fatal(err)
+    }
+    if err := next.RestoreMemory(id, restored); err != nil {
+        t.Fatal(err)
+    }
+    data := make([]byte, 2)
+    if err := restored.ReadRegs(memorycore.AreaHoldingRegs, 4, 1, data); err != nil {
+        t.Fatal(err)
+    }
+    if data[0] != 0x12 || data[1] != 0x34 {
+        t.Fatalf("legacy snapshot not restored: %x", data)
+    }
+    for _, p := range []string{current, BackupPath(current)} {
+        if _, err := os.Stat(p); err != nil {
+            t.Fatalf("migrated file %s: %v", p, err)
+        }
+    }
+}
