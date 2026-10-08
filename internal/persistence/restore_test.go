@@ -46,26 +46,28 @@ func newRestoreManager(t *testing.T) (*Manager, string) {
 func TestRestoreMissingCreatesInitialSnapshot(t *testing.T) {
 	m, dir := newRestoreManager(t)
 	mem := newMemory(t)
-
-	// Seed memory with non-default values so the initial snapshot captures them.
 	if err := mem.WriteRegs(memorycore.AreaHoldingRegs, 4, 1, []byte{0x12, 0x34}); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := m.RestoreMemory(memorycore.MemoryID{Port: 502, UnitID: 1}, mem); err != nil {
 		t.Fatalf("RestoreMemory: %v", err)
 	}
 	if m.State() != StateReady {
 		t.Fatalf("state = %v, want READY", m.State())
 	}
-
-	path := config.SnapshotPath(dir, memorycore.MemoryID{Port: 502, UnitID: 1})
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("initial snapshot not created: %v", err)
+	if m.Diagnostics().RestoreSource != "initial" {
+		t.Fatalf("restore source = %q", m.Diagnostics().RestoreSource)
 	}
-	if _, err := ParseLayout(data); err != nil {
-		t.Fatalf("initial snapshot invalid: %v", err)
+
+	id := memorycore.MemoryID{Port: 502, UnitID: 1}
+	for _, path := range []string{config.SnapshotPath(dir, id), BackupPath(config.SnapshotPath(dir, id))} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("initial snapshot not created at %s: %v", path, err)
+		}
+		if _, err := ParseLayout(data); err != nil {
+			t.Fatalf("initial snapshot invalid at %s: %v", path, err)
+		}
 	}
 }
 
@@ -84,7 +86,6 @@ func TestRestoreValidSnapshotRoundtrip(t *testing.T) {
 		t.Fatalf("initial restore: %v", err)
 	}
 
-	// Second manager reads the same directory and restores into fresh memory.
 	m2, err := New(restorePlan(dir), allocations())
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +93,9 @@ func TestRestoreValidSnapshotRoundtrip(t *testing.T) {
 	dest := newMemory(t)
 	if err := m2.RestoreMemory(id, dest); err != nil {
 		t.Fatalf("restore: %v", err)
+	}
+	if m2.Diagnostics().RestoreSource != "primary" {
+		t.Fatalf("restore source = %q, want primary", m2.Diagnostics().RestoreSource)
 	}
 
 	regs := make([]byte, 6)
@@ -110,7 +114,59 @@ func TestRestoreValidSnapshotRoundtrip(t *testing.T) {
 	}
 }
 
-func TestRestoreCorruptSnapshotFailsClosed(t *testing.T) {
+func TestRestoreCorruptPrimaryFallsBackToBackup(t *testing.T) {
+	m, dir := newRestoreManager(t)
+	id := memorycore.MemoryID{Port: 502, UnitID: 1}
+
+	src := newMemory(t)
+	if err := src.WriteRegs(memorycore.AreaHoldingRegs, 4, 1, []byte{0xCA, 0xFE}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RestoreMemory(id, src); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the primary only.
+	path := config.SnapshotPath(dir, id)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] ^= 0xFF
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m2, _ := New(restorePlan(dir), allocations())
+	dest := newMemory(t)
+	if err := m2.RestoreMemory(id, dest); err != nil {
+		t.Fatalf("recovery from backup failed: %v", err)
+	}
+	if m2.State() != StateReady {
+		t.Fatalf("state = %v, want READY after recovery", m2.State())
+	}
+	if m2.Diagnostics().RestoreSource != "backup" {
+		t.Fatalf("restore source = %q, want backup", m2.Diagnostics().RestoreSource)
+	}
+	regs := make([]byte, 2)
+	if err := dest.ReadRegs(memorycore.AreaHoldingRegs, 4, 1, regs); err != nil {
+		t.Fatal(err)
+	}
+	if regs[0] != 0xCA || regs[1] != 0xFE {
+		t.Fatalf("backup values not restored: %x", regs)
+	}
+
+	// Primary must have been rebuilt to a valid image from the backup.
+	rebuilt, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseLayout(rebuilt); err != nil {
+		t.Fatalf("primary not rebuilt valid: %v", err)
+	}
+}
+
+func TestRestoreCorruptBothFailsClosed(t *testing.T) {
 	m, dir := newRestoreManager(t)
 	id := memorycore.MemoryID{Port: 502, UnitID: 1}
 
@@ -118,25 +174,25 @@ func TestRestoreCorruptSnapshotFailsClosed(t *testing.T) {
 	if err := m.RestoreMemory(id, src); err != nil {
 		t.Fatal(err)
 	}
-
 	path := config.SnapshotPath(dir, id)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data[0] ^= 0xFF // corrupt magic
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
+	for _, p := range []string{path, BackupPath(path)} {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data[0] ^= 0xFF
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	dest := newMemory(t)
 	if err := dest.WriteRegs(memorycore.AreaHoldingRegs, 4, 1, []byte{0xAB, 0xCD}); err != nil {
 		t.Fatal(err)
 	}
-
 	m2, _ := New(restorePlan(dir), allocations())
 	if err := m2.RestoreMemory(id, dest); err == nil {
-		t.Fatal("corrupt snapshot accepted")
+		t.Fatal("corrupt primary+backup accepted")
 	}
 	if m2.State() != StateFailed {
 		t.Fatalf("state = %v, want FAILED", m2.State())
@@ -144,7 +200,6 @@ func TestRestoreCorruptSnapshotFailsClosed(t *testing.T) {
 	if m2.Diagnostics().LastError == "" {
 		t.Fatal("failure not recorded")
 	}
-
 	// Memory must be untouched: no partial restore.
 	regs := make([]byte, 2)
 	if err := dest.ReadRegs(memorycore.AreaHoldingRegs, 4, 1, regs); err != nil {
@@ -155,6 +210,27 @@ func TestRestoreCorruptSnapshotFailsClosed(t *testing.T) {
 	}
 }
 
+func TestRestorePrimaryCorruptNoBackupFailsClosed(t *testing.T) {
+	m, dir := newRestoreManager(t)
+	id := memorycore.MemoryID{Port: 502, UnitID: 1}
+	if err := m.RestoreMemory(id, newMemory(t)); err != nil {
+		t.Fatal(err)
+	}
+	path := config.SnapshotPath(dir, id)
+	data, _ := os.ReadFile(path)
+	data[0] ^= 0xFF
+	_ = os.WriteFile(path, data, 0o600)
+	_ = os.Remove(BackupPath(path))
+
+	m2, _ := New(restorePlan(dir), allocations())
+	if err := m2.RestoreMemory(id, newMemory(t)); err == nil {
+		t.Fatal("corrupt primary with no backup accepted")
+	}
+	if m2.State() != StateFailed {
+		t.Fatalf("state = %v, want FAILED", m2.State())
+	}
+}
+
 func TestRestoreIdentityMismatchFails(t *testing.T) {
 	m, dir := newRestoreManager(t)
 	id := memorycore.MemoryID{Port: 502, UnitID: 1}
@@ -162,7 +238,6 @@ func TestRestoreIdentityMismatchFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Rename the snapshot to a different identity's expected path.
 	path := config.SnapshotPath(dir, id)
 	other := config.SnapshotPath(dir, memorycore.MemoryID{Port: 502, UnitID: 2})
 	data, _ := os.ReadFile(path)
@@ -185,8 +260,7 @@ func TestRestoreIdentityMismatchFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dest := newMemory(t)
-	if err := m2.RestoreMemory(memorycore.MemoryID{Port: 502, UnitID: 2}, dest); err == nil {
+	if err := m2.RestoreMemory(memorycore.MemoryID{Port: 502, UnitID: 2}, newMemory(t)); err == nil {
 		t.Fatal("identity mismatch accepted")
 	}
 	if m2.State() != StateFailed {
@@ -231,7 +305,6 @@ func TestPersistMemoryWritesImage(t *testing.T) {
 	if err := m.PersistMemory(id, mem); err != nil {
 		t.Fatalf("PersistMemory: %v", err)
 	}
-
 	data, err := os.ReadFile(config.SnapshotPath(dir, id))
 	if err != nil {
 		t.Fatal(err)
@@ -244,14 +317,12 @@ func TestPersistMemoryWritesImage(t *testing.T) {
 	if !ok {
 		t.Fatal("registers segment missing")
 	}
-	regOff := seg.Offset + 0 // start 4 -> index 0
-	if data[regOff] != 0xDE || data[regOff+1] != 0xAD {
-		t.Fatalf("persisted value wrong: %x", data[regOff:regOff+2])
+	if data[seg.Offset] != 0xDE || data[seg.Offset+1] != 0xAD {
+		t.Fatalf("persisted value wrong: %x", data[seg.Offset:seg.Offset+2])
 	}
 }
 
-func TestRestoreRelativePathAndDirSync(t *testing.T) {
-	// Sanity: a relative directory works and rename+dir sync succeed.
+func TestRestoreCreatesDirectoryRelative(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "rel")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -262,8 +333,5 @@ func TestRestoreRelativePathAndDirSync(t *testing.T) {
 	}
 	if err := m.RestoreMemory(memorycore.MemoryID{Port: 502, UnitID: 1}, newMemory(t)); err != nil {
 		t.Fatalf("restore: %v", err)
-	}
-	if _, err := os.Stat(config.SnapshotPath(dir, memorycore.MemoryID{Port: 502, UnitID: 1})); err != nil {
-		t.Fatalf("snapshot missing: %v", err)
 	}
 }

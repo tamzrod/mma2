@@ -5,6 +5,64 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## Contract reconciliation — per-block CRC32 and known-good backup
+
+Status: DONE
+Branch: feature/native-persistence
+
+The contract owner committed `605f7f9` after P03–P06 were pushed, revising the
+snapshot format (per-block CRC32) and requiring a validated `snapshot.bak`
+recovery image with primary→backup startup recovery. This is a forward commit
+(no history rewrite) that supersedes the format/store/restore details recorded
+under P04–P06 below.
+
+### Changes
+
+- `internal/persistence/format.go` (version 2): layout is now
+  `[24B header][16B*N descriptors][4B metadata CRC][4B*B block CRC table][payload]`.
+  Metadata CRC covers only header+descriptors. Payload is split into 256-byte
+  blocks, each with its own CRC32. `ParseLayout` verifies every block CRC and
+  rejects any mismatch; `NewLayout` exposes `BlockSize`, `BlockCRCOffset`,
+  `BlockCount`.
+- `internal/persistence/store.go`: `ReplaceBoth` (initial primary+backup),
+  `InstallBackup`, `ReadPrimary`/`ReadBackup`, `PrimaryExists`/`BackupExists`,
+  `ApplyWord`/`ApplyBitByte` now recompute and write only the touched block
+  CRC(s) (one register or bit-byte never rewrites unrelated blocks).
+  `BackupPath` derives `snapshot.bak` from `snapshot.bin`.
+- `internal/persistence/restore.go`: startup order is primary → backup.
+  Valid primary restores directly; corrupt/missing primary with a valid backup
+  restores from backup, rebuilds the primary from the verified backup, and
+  reports `RestoreSource="backup"` (degraded recovery); both invalid fails
+  closed (FAILED) with no partial exposure. Missing both initializes and writes
+  primary+backup.
+- `internal/persistence/lifecycle.go`: `Diagnostics.RestoreSource`.
+- Tests updated (`format_test.go`, `store_test.go`, `restore_test.go`) to cover
+  metadata CRC independent of payload, per-block CRC granularity, targeted
+  updates preserving other blocks, backup fallback, and corrupt-both fail-closed.
+
+### Decisions recorded (with evidence)
+
+1. **Block size 256 bytes** (initial candidate from the contract), recorded in
+   the header so it is validated on read.
+2. **Backup never refreshed from unverified data**: the backup is only written
+   from an image already accepted by `ParseLayout` (initial creation, or a
+   validated primary). In-place primary writes never touch the backup, so the
+   only good copy cannot be erased by a primary corruption.
+3. **Backup rotation/checkpoint**: P08 will refresh the backup on a bounded
+   checkpoint schedule from a validated current image; targeted writes never
+   touch it (preserving a recoverable baseline between checkpoints).
+4. **CRC identifies, does not atomically protect**: a torn in-place data+CRC
+   write is detected at startup by block CRC and recovered from the backup; no
+   unsupported atomicity claim is made.
+
+### Evidence
+
+- `go vet ./...`, `go test ./... -count=1` — all pass.
+- `go test ./internal/persistence/ -race -count=1` — pass.
+- Process smoke test re-run (below) — primary and backup both created.
+
+---
+
 ## P06 — Startup restore orchestration
 
 Status: DONE

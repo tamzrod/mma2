@@ -47,6 +47,7 @@ type Diagnostics struct {
 	Directory     string
 	Identities    int
 	Segments      int
+	RestoreSource string
 	LastError     string
 	LastErrorAt   time.Time
 	LastRestoreAt time.Time
@@ -67,6 +68,7 @@ type Manager struct {
 	lastErrAt   time.Time
 	lastRestore time.Time
 	lastSave    time.Time
+	restoreSrc  string
 }
 
 // New constructs the persistence owner from a validated plan. A nil plan yields
@@ -156,6 +158,7 @@ func (m *Manager) Diagnostics() Diagnostics {
 		State:         m.state,
 		Directory:     m.dir,
 		Identities:    len(m.segments),
+		RestoreSource: m.restoreSrc,
 		LastErrorAt:   m.lastErrAt,
 		LastRestoreAt: m.lastRestore,
 		LastSaveAt:    m.lastSave,
@@ -181,6 +184,16 @@ func (m *Manager) markRestored(at time.Time) {
 	m.mu.Lock()
 	m.state = StateReady
 	m.lastRestore = at
+	m.mu.Unlock()
+}
+
+// markRestoredFrom records a successful restore and the source used ("primary",
+// "backup", or "initial").
+func (m *Manager) markRestoredFrom(source string, at time.Time) {
+	m.mu.Lock()
+	m.state = StateReady
+	m.lastRestore = at
+	m.restoreSrc = source
 	m.mu.Unlock()
 }
 

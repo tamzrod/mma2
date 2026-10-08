@@ -1,61 +1,106 @@
 package persistence
 
 import (
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 )
 
-// FileStore performs serialized, positional disk access for one snapshot file.
+// FileStore performs serialized, positional disk access for one snapshot
+// identity: a primary file and a separately named backup file.
 //
-// Two write modes exist:
+// Write modes:
 //
-//   - Replace (ReplaceAtomic): writes a whole snapshot image to a temporary file,
-//     fsyncs, then renames it over the target. This is used for initial creation
-//     and layout rebuilds and is atomic at the file level.
-//   - Targeted (WriteWord / WriteBitByte): positional writes to a single 2-byte
-//     register or one containing bit byte. These preserve all other bytes but are
-//     NOT power-loss atomic on their own; the crash-consistency contract is
-//     documented, not assumed.
+//   - ReplaceAtomic(image): writes a whole snapshot image to a temporary file,
+//     fsyncs, then renames it over the primary. Used for initial creation and
+//     rebuilds; atomic at the file level.
+//   - InstallBackup(image): the same atomic replacement for the backup file.
+//     Callers must only pass an image that has passed ParseLayout validation.
+//   - ApplyWord / ApplyBitByte: positional data write plus the recomputed CRC of
+//     the touched fixed-size block. Unaffected payload and CRCs are preserved,
+//     so one register change never rewrites or rehashes the whole file.
 //
-// Targeted writes are visible to subsequent reads immediately (page cache) but
-// are only guaranteed durable across power loss after an explicit Sync. There is
-// no implied per-write durability; the flush/durability contract is defined by
-// the caller's Sync schedule (initial create/rebuild is durable via
-// ReplaceAtomic).
+// Durability and crash consistency (explicit contract):
+//   - Targeted writes are visible to subsequent reads immediately (page cache)
+//     but durable across power loss only after an explicit Sync. There is no
+//     implied per-write durability.
+//   - An in-place data+CRC write is identified by CRC32 but is NOT itself
+//     atomic. The block CRC catches a torn write at startup; recovery uses the
+//     backup rather than exposing possibly-corrupt primary data.
+//   - The backup is a known-good image. It is only (re)created from a primary
+//     that has already passed integrity validation, so the only good copy is
+//     never overwritten with unverified data.
 //
-// All operations are serialized by a mutex so concurrent writers cannot
-// interleave their file mutations. No lock file is taken; two processes sharing
-// one path will corrupt each other and must be given distinct directories.
+// No lock file is taken; two processes sharing one path will corrupt each other
+// and must be given distinct directories.
 type FileStore struct {
-	mu   sync.Mutex
-	path string
+	mu         sync.Mutex
+	path       string
+	backupPath string
+	layout     *Layout
 }
 
-// NewFileStore returns a store for the given snapshot path.
+// NewFileStore returns a store for a snapshot path. The backup path is derived
+// from the primary path by replacing the extension with ".bak".
 func NewFileStore(path string) *FileStore {
-	return &FileStore{path: path}
+	return &FileStore{path: path, backupPath: BackupPath(path)}
 }
 
-// Path returns the snapshot file path.
+// BackupPath returns the backup path for a snapshot path.
+func BackupPath(path string) string {
+	ext := filepath.Ext(path)
+	if ext == "" {
+		return path + ".bak"
+	}
+	return strings.TrimSuffix(path, ext) + ".bak"
+}
+
+// Path returns the primary snapshot file path.
 func (s *FileStore) Path() string { return s.path }
 
+// BackupFilePath returns the backup snapshot file path.
+func (s *FileStore) BackupFilePath() string { return s.backupPath }
+
+// SetLayout records the layout used for targeted CRC updates.
+func (s *FileStore) SetLayout(l *Layout) { s.layout = l }
+
 // ReplaceAtomic writes image to a temporary file, fsyncs it, then renames it
-// over the target path. A crash before rename leaves the target untouched; a
-// crash after rename leaves the fully written image. Stale temporary files from
-// earlier interrupted replacements in this directory are cleaned up first.
+// over the primary path.
 func (s *FileStore) ReplaceAtomic(image []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.replaceAtomicLocked(s.path, image)
+}
 
-	dir := filepath.Dir(s.path)
-	if err := cleanStaleTemps(dir, filepath.Base(s.path)); err != nil {
+// InstallBackup atomically installs a validated image as the backup.
+func (s *FileStore) InstallBackup(image []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.replaceAtomicLocked(s.backupPath, image)
+}
+
+// ReplaceBoth atomically installs img as both the primary and the backup.
+// Used to establish a known-good baseline at initial creation/rebuild.
+func (s *FileStore) ReplaceBoth(img []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.replaceAtomicLocked(s.path, img); err != nil {
+		return err
+	}
+	return s.replaceAtomicLocked(s.backupPath, img)
+}
+
+func (s *FileStore) replaceAtomicLocked(path string, image []byte) error {
+	dir := filepath.Dir(path)
+	if err := cleanStaleTemps(dir, filepath.Base(path)); err != nil {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(dir, filepath.Base(s.path)+".tmp-*")
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("persistence: create temp: %w", err)
 	}
@@ -75,28 +120,24 @@ func (s *FileStore) ReplaceAtomic(image []byte) error {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("persistence: close temp: %w", err)
 	}
-	if err := os.Rename(tmpName, s.path); err != nil {
+	if err := os.Rename(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("persistence: rename: %w", err)
 	}
-	if err := syncDir(dir); err != nil {
-		return err
-	}
-	return nil
+	return syncDir(dir)
 }
 
-// WriteWord writes a 2-byte big-endian register value at byte offset.
-func (s *FileStore) WriteWord(offset uint32, value uint16) error {
+// ApplyWord writes a 2-byte big-endian register value at byte offset and
+// refreshes the CRC of the affected block(s), preserving all other bytes.
+func (s *FileStore) ApplyWord(offset uint32, value uint16) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	buf := []byte{byte(value >> 8), byte(value)}
-	return s.writeAt(offset, buf)
+	return s.applyLocked(offset, []byte{byte(value >> 8), byte(value)})
 }
 
-// WriteBitByte applies set/clear of one bit within the byte at byteOffset.
-// It reads the current byte (defaulting to 0 if unwritten), updates only bit,
-// and writes the byte back. Adjacent bits are preserved.
-func (s *FileStore) WriteBitByte(byteOffset uint32, bit uint8, set bool) error {
+// ApplyBitByte applies set/clear of one bit within the byte at byteOffset and
+// refreshes the CRC of the affected block. Adjacent bits are preserved.
+func (s *FileStore) ApplyBitByte(byteOffset uint32, bit uint8, set bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -104,16 +145,15 @@ func (s *FileStore) WriteBitByte(byteOffset uint32, bit uint8, set bool) error {
 	if err != nil {
 		return fmt.Errorf("persistence: open snapshot: %w", err)
 	}
-	defer f.Close()
-
 	current := make([]byte, 1)
 	n, err := f.ReadAt(current, int64(byteOffset))
 	if err != nil && n == 0 {
-		// A missing byte (sparse or short file) is treated as zero.
 		current[0] = 0
 	} else if n != 1 {
+		_ = f.Close()
 		return fmt.Errorf("persistence: short read at offset %d", byteOffset)
 	}
+	_ = f.Close()
 
 	mask := byte(1 << bit)
 	if set {
@@ -121,14 +161,64 @@ func (s *FileStore) WriteBitByte(byteOffset uint32, bit uint8, set bool) error {
 	} else {
 		current[0] &^= mask
 	}
+	return s.applyLocked(byteOffset, current)
+}
 
-	if _, err := f.WriteAt(current, int64(byteOffset)); err != nil {
-		return fmt.Errorf("persistence: write bit byte: %w", err)
+// applyLocked writes data at offset and refreshes the CRC of every touched
+// block.
+func (s *FileStore) applyLocked(offset uint32, data []byte) error {
+	if s.layout == nil {
+		return fmt.Errorf("persistence: layout not set on store")
 	}
+
+	f, err := os.OpenFile(s.path, os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("persistence: open snapshot: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteAt(data, int64(offset)); err != nil {
+		return fmt.Errorf("persistence: write at %d: %w", offset, err)
+	}
+
+	// Recompute and rewrite the CRC of every block overlapping [offset, end).
+	payloadLen := s.layout.payloadSize()
+	payloadOffset := offset - s.layout.PayloadStart
+	first, last := blockRange(s.layout, payloadOffset, uint32(len(data)))
+	block := make([]byte, s.layout.BlockSize)
+	for i := first; i <= last; i++ {
+		blockStart := uint64(i) * uint64(s.layout.BlockSize)
+		blockEnd := blockStart + uint64(s.layout.BlockSize)
+		if blockEnd > uint64(payloadLen) {
+			blockEnd = uint64(payloadLen)
+		}
+		n := int(blockEnd - blockStart)
+		if _, err := f.ReadAt(block[:n], int64(s.layout.PayloadStart)+int64(blockStart)); err != nil {
+			return fmt.Errorf("persistence: read block %d: %w", i, err)
+		}
+		crc := make([]byte, blockCRCEntrySize)
+		binary.BigEndian.PutUint32(crc, crc32.ChecksumIEEE(block[:n]))
+		if _, err := f.WriteAt(crc, int64(s.layout.blockCRCPos(i))); err != nil {
+			return fmt.Errorf("persistence: write block %d CRC: %w", i, err)
+		}
+	}
+
 	return f.Sync()
 }
 
-// Sync flushes the snapshot file to stable storage.
+// payloadSize returns the total payload byte length for the layout.
+func (l *Layout) payloadSize() uint32 { return l.TotalSize - l.PayloadStart }
+
+// blockRange returns the inclusive block index range covering a payload span.
+func blockRange(l *Layout, payloadOffset, length uint32) (uint32, uint32) {
+	if length == 0 {
+		return 0, 0
+	}
+	bs := uint32(l.BlockSize)
+	return payloadOffset / bs, (payloadOffset + length - 1) / bs
+}
+
+// Sync flushes the primary snapshot file to stable storage.
 func (s *FileStore) Sync() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,22 +233,32 @@ func (s *FileStore) Sync() error {
 	return nil
 }
 
-// ReadAll returns the whole snapshot image.
-func (s *FileStore) ReadAll() ([]byte, error) {
+// ReadPrimary returns the whole primary snapshot image.
+func (s *FileStore) ReadPrimary() ([]byte, error) { return s.readFile(s.path) }
+
+// ReadBackup returns the whole backup snapshot image.
+func (s *FileStore) ReadBackup() ([]byte, error) { return s.readFile(s.backupPath) }
+
+func (s *FileStore) readFile(path string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := os.ReadFile(s.path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
-// Exists reports whether the snapshot file exists.
-func (s *FileStore) Exists() (bool, error) {
+// PrimaryExists reports whether the primary snapshot file exists.
+func (s *FileStore) PrimaryExists() (bool, error) { return s.fileExists(s.path) }
+
+// BackupExists reports whether the backup snapshot file exists.
+func (s *FileStore) BackupExists() (bool, error) { return s.fileExists(s.backupPath) }
+
+func (s *FileStore) fileExists(path string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := os.Stat(s.path)
+	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
 	}
@@ -168,19 +268,7 @@ func (s *FileStore) Exists() (bool, error) {
 	return false, err
 }
 
-func (s *FileStore) writeAt(offset uint32, buf []byte) error {
-	f, err := os.OpenFile(s.path, os.O_RDWR, 0o600)
-	if err != nil {
-		return fmt.Errorf("persistence: open snapshot: %w", err)
-	}
-	defer f.Close()
-	if _, err := f.WriteAt(buf, int64(offset)); err != nil {
-		return fmt.Errorf("persistence: write at %d: %w", offset, err)
-	}
-	return f.Sync()
-}
-
-// cleanStaleTemps removes leftover temp files for this snapshot from dir.
+// cleanStaleTemps removes leftover temp files for this target from dir.
 func cleanStaleTemps(dir, base string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
