@@ -5,6 +5,69 @@ One entry per completed micro-task, with evidence. Newest first.
 
 ---
 
+## P13 — Independent VERIFY gate
+
+Status: PASS (after remediation)
+Branch: feature/native-persistence
+
+Independent review of all prior commits against the locked contract. No new
+feature work; two defects found and fixed, each with a regression test.
+
+### Findings and remediation
+
+1. **HIGH — cross-segment dirty coalescing (fixed).** `coalesce` merged dirty
+   byte ranges that were adjacent in the file but belonged to different
+   segments (segments are laid out contiguously). A flush could then read a
+   span with one area's interpretation, and could write bytes belonging to a
+   neighboring segment using the wrong protocol/offset. Options considered:
+   (a) tag ranges with the owning segment and only coalesce within a segment;
+   (b) flush per segment without coalescing across areas. Chose (a) as the
+   minimal, localized fix. Regression: `TestCoalesceDoesNotMergeAcrossSegments`,
+   `TestSchedulerFlushDoesNotCorruptNeighboringSegment`.
+2. **MEDIUM — non-byte-aligned bit segment flush (fixed).** `readBitSpanInto`
+   asked for a full 8-bit byte that extended past a bit segment whose `Count` is
+   not a multiple of 8 (e.g. coils count 12), triggering `ErrOutOfBounds` and
+   failing the flush. Fixed by clamping to the segment's remaining bits and
+   leaving padding bits zero (they are always zero on disk). Regression:
+   `TestSchedulerFlushNonAlignedBitSegment`.
+
+### Contract checks
+
+- Disabled by default; enabled requires a directory; ranges validated inside
+  allocations with no clamping — PASS.
+- Identity `(Port, UnitID)` only; distinct files; no cross-identity data — PASS.
+- Restore before listener acceptance; corrupt/incompatible fails closed; corrupt
+  primary recovers from a validated backup — PASS.
+- Fixed-offset binary layout with per-block CRC32; targeted writes never rewrite
+  unrelated blocks; whole-file rehash never needed — PASS.
+- Known-good backup refreshed on the locked 60-second cadence; never replaced
+  with unvalidated data; a failing cycle is skipped — PASS.
+- All authoritative writers (FC5/6/15/16, Raw Ingest, internal) mark dirty with
+  RBE on or off; reads never mark dirty; protocol/ACK unchanged — PASS.
+- State Sealing untouched; no RBE transport or external service required — PASS.
+- Disk failures observable, sticky FAILED, unflushed data retained, no false
+  success, no plausible corrupt snapshot — PASS.
+- No synchronous disk IO on the memory write hot path; core/protocol separation
+  preserved (memorycore hook is behavior-free) — PASS.
+
+### Evidence
+
+- `go vet ./...` — clean.
+- `go test ./... -count=1` — 9 packages ok, no failures.
+- `go test -race ./... -count=1` — no failures.
+- `bash test/rbe_e2e/run_test.sh` — PASS.
+- Process E2E (P08/P12): real binary, Modbus FC6 write → snapshot → restart →
+  FC3 read-back confirmed.
+
+### Unresolved HARD assumptions
+
+- Snapshot filename `mma2-<port>-<unit_id>.bin`/`.bak` and the 256-byte block
+  size are recorded decisions, not derived from a pre-existing convention.
+- Bit payload padding bits beyond `Count` are assumed always zero; this holds
+  because `writeBits` only ever writes in-range bits and memory starts zeroed.
+
+---
+
 ## P12 — Integration, regression and documentation
 
 Status: DONE
