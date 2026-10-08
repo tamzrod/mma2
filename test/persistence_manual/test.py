@@ -124,7 +124,7 @@ def main():
                 proc = start(binary, log)
                 assert read_register(3) == 0
                 assert read_coil(5) is False
-                backup = SNAPS / f"mma2-{PORT}-{UNIT}.bak"
+                backup = SNAPS / f"{PORT}-{UNIT}.bak"
                 initial_backup = backup.read_bytes()
 
                 print("[2/5] FC6 and FC5 writes; wait for targeted disk flush", flush=True)
@@ -133,8 +133,8 @@ def main():
                 assert read_register(3) == 0xBEEF
                 assert read_coil(5) is True
                 time.sleep(0.4)
-                primary = SNAPS / f"mma2-{PORT}-{UNIT}.bin"
-                backup = SNAPS / f"mma2-{PORT}-{UNIT}.bak"
+                primary = SNAPS / f"{PORT}-{UNIT}.bin"
+                backup = SNAPS / f"{PORT}-{UNIT}.bak"
                 assert primary.is_file() and backup.is_file(), "snapshot pair missing"
                 assert backup.read_bytes() == initial_backup, "backup was overwritten before 60-second interval"
                 assert primary.read_bytes() != initial_backup, "primary did not receive targeted updates"
