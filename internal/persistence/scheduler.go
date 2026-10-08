@@ -102,6 +102,7 @@ func (s *Scheduler) run(ctx context.Context) {
 		<-timer.C
 	}
 	defer timer.Stop()
+	armed := false
 
 	// Periodic checkpoint even when idle, so the backup cadence holds without
 	// new writes.
@@ -119,14 +120,14 @@ func (s *Scheduler) run(ctx context.Context) {
 		case <-ticker.C:
 			s.flushAll()
 		case <-s.wake:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
+			// Arm once on the first write in a burst. Repeated writes must
+			// never postpone the maximum dirty-to-flush delay.
+			if !armed {
+				timer.Reset(s.delay)
+				armed = true
 			}
-			timer.Reset(s.delay)
 		case <-timer.C:
+			armed = false
 			s.flushAll()
 		}
 	}
