@@ -96,16 +96,18 @@ func (l *Listener) Close() error {
 		return nil
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.closed {
-		return nil
-	}
 	l.closed = true
-	if l.ln == nil {
-		return nil
-	}
-	err := l.ln.Close()
+	ln := l.ln
 	l.ln = nil
+	for conn := range l.active {
+		_ = conn.Close()
+	}
+	l.mu.Unlock()
+	var err error
+	if ln != nil {
+		err = ln.Close()
+	}
+	l.wg.Wait()
 	return err
 }
 
