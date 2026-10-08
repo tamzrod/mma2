@@ -80,7 +80,7 @@ func BuildMemoryAllocations(cfg *Config) map[memorycore.MemoryID]MemoryAllocatio
 }
 
 func SnapshotFileName(id memorycore.MemoryID) string {
-	return fmt.Sprintf("mma2-%d-%d.bin", id.Port, id.UnitID)
+	return fmt.Sprintf("%d-%d.bin", id.Port, id.UnitID)
 }
 
 func SnapshotPath(directory string, id memorycore.MemoryID) string {
