@@ -32,7 +32,7 @@ listeners:
       - unit_id: 1
 
         # Per-memory persistence (disabled when omitted).
-                # persistence:
+        # persistence:
         #   enabled: true
         #   directory: /var/lib/mma2/unit1
         # Omit ranges to persist all areas allocated to this memory.
