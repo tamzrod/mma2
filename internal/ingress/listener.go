@@ -77,6 +77,15 @@ func (l *Listener) ListenAndServe(
 			}
 			return err
 		}
+		l.mu.Lock()
+		if l.closed {
+			l.mu.Unlock()
+			_ = conn.Close()
+			return nil
+		}
+		l.active[conn] = struct{}{}
+		l.wg.Add(1)
+		l.mu.Unlock()
 		go l.handleConn(conn, onModbus, onRawIngest)
 	}
 }
