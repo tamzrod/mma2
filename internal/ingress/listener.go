@@ -116,6 +116,13 @@ func (l *Listener) handleConn(
 	onModbus func(net.Conn),
 	onRawIngest func(net.Conn),
 ) {
+	defer func() {
+		_ = conn.Close()
+		l.mu.Lock()
+		delete(l.active, conn)
+		l.mu.Unlock()
+		l.wg.Done()
+	}()
 	proto, reader, err := Classify(conn)
 	if err != nil {
 		conn.Close()
